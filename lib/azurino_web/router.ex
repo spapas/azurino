@@ -1,5 +1,15 @@
 defmodule AzurinoWeb.Router do
   use AzurinoWeb, :router
+  import Phoenix.LiveView.Router
+
+  pipeline :browser do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {AzurinoWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+  end
 
   pipeline :api do
     plug :accepts, ["json"]
@@ -7,6 +17,12 @@ defmodule AzurinoWeb.Router do
 
   scope "/api", AzurinoWeb do
     pipe_through :api
+  end
+
+  scope "/", AzurinoWeb do
+    pipe_through :browser
+
+    get "/", PageController, :home
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
