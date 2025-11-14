@@ -16,7 +16,7 @@ config :azurino, AzurinoWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [json: AzurinoWeb.ErrorJSON],
+    formats: [html: AzurinoWeb.ErrorHTML, json: AzurinoWeb.ErrorJSON],
     layout: false
   ],
   pubsub_server: Azurino.PubSub,
@@ -30,6 +30,25 @@ config :azurino, AzurinoWeb.Endpoint,
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
 config :azurino, Azurino.Mailer, adapter: Swoosh.Adapters.Local
+
+config :esbuild,
+  version: "0.25.4",
+  azurino: [
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
+  ]
+
+config :tailwind,
+  version: "4.1.7",
+  azurino: [
+    args: ~w(
+      --input=assets/css/app.css
+      --output=priv/static/assets/css/app.css
+    ),
+    cd: Path.expand("..", __DIR__)
+  ]
 
 # Configures Elixir's Logger
 config :logger, :default_formatter,
