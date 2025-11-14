@@ -32,7 +32,7 @@ defmodule Azurino.Azure do
     end
   end
 
-  def list_folder(folder_path, container_sas_url \\ @sas_url)
+  def list_folder(folder_path \\ "", container_sas_url \\ @sas_url)
       when is_binary(container_sas_url) and is_binary(folder_path) do
     # Normalize folder path
     normalized_folder =
@@ -126,7 +126,7 @@ defmodule Azurino.Azure do
   @doc """
   Downloads a blob and returns it as a binary.
   """
-  def download(container_sas_url, blob_path)
+  def download(blob_path, container_sas_url \\ @sas_url)
       when is_binary(container_sas_url) and is_binary(blob_path) do
     download_url = build_blob_url(container_sas_url, blob_path)
 
@@ -149,7 +149,7 @@ defmodule Azurino.Azure do
   Downloads a blob as a stream that can be used in Phoenix responses.
   Returns a stream that yields chunks of data.
   """
-  def download_stream(container_sas_url, blob_path)
+  def download_stream(blob_path, container_sas_url \\ @sas_url)
       when is_binary(container_sas_url) and is_binary(blob_path) do
     download_url = build_blob_url(container_sas_url, blob_path)
 
@@ -199,7 +199,7 @@ defmodule Azurino.Azure do
   @doc """
   Gets metadata about a blob (size, content-type, etc.) without downloading it.
   """
-  def get_blob_metadata(container_sas_url, blob_path)
+  def get_blob_metadata(blob_path, container_sas_url \\ @sas_url)
       when is_binary(container_sas_url) and is_binary(blob_path) do
     download_url = build_blob_url(container_sas_url, blob_path)
 

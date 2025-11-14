@@ -1,14 +1,30 @@
 <Layouts.app flash={@flash}>
   <.header>Hello, world</.header>
+  <.link class="underline" href={~p"/"}>
+    <.icon name="hero-home" class="text-gray-700 dark:text-gray-300" />
+  </.link>
   <ul>
   <%= for folder <- @folders do %>
-    <li><%= folder %></li>
+    <li>
+      <.link class="underline" href={~p"/?path=#{folder}"}>{folder}</.link>
+    </li>
   <% end %>
   </ul>
 
   <ul>
   <%= for file <- @files do %>
-    <li><%= file %></li>
+    <li>
+    {file}
+    <.link href={~p"/metadata/?path=#{file}"}>
+    <.icon name="hero-information-circle" class="text-gray-700 dark:text-gray-300" />
+    </.link>
+
+
+    <.icon name="hero-arrow-down-on-square" class="text-gray-700 dark:text-gray-300" />
+
+
+    </li>
+
   <% end %>
   </ul>
 </Layouts.app>

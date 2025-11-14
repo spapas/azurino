@@ -83,6 +83,8 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
+config :bandit, log_level: :warning
+
 IO.puts("Dev config loaded")
 
 import_config "local.exs"

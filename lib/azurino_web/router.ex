@@ -26,6 +26,7 @@ defmodule AzurinoWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/metadata/", PageController, :metadata
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
