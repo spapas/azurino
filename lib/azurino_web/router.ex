@@ -18,8 +18,8 @@ defmodule AzurinoWeb.Router do
   scope "/api", AzurinoWeb do
     pipe_through :api
 
-      get "/health", Api.AzureController, :index
-     get "/health/:id", Api.AzureController, :show
+    get "/health", Api.AzureController, :index
+    get "/health/:id", Api.AzureController, :show
   end
 
   scope "/", AzurinoWeb do
