@@ -16,12 +16,16 @@
     <li>
     {file}
     <.link href={~p"/metadata/?path=#{file}"}>
-    <.icon name="hero-information-circle" class="text-gray-700 dark:text-gray-300" />
+      <.icon name="hero-information-circle" class="text-gray-700 dark:text-gray-300" />
     </.link>
 
+    <.link href={~p"/download/?path=#{file}"}>
+      <.icon name="hero-arrow-down-on-square" class="text-gray-700 dark:text-gray-300" />
+    </.link>
 
-    <.icon name="hero-arrow-down-on-square" class="text-gray-700 dark:text-gray-300" />
-
+    <.link href={~p"/download_signed/?#{Azurino.SignedURL.sign(path: file)}"}>
+      <.icon name="hero-key" class="text-gray-700 dark:text-gray-300" />
+    </.link>
 
     </li>
 

@@ -1216,21 +1216,10 @@
     width: 1.5rem;
     height: 1.5rem;
   }
-  .hero-home-micro {
-    --hero-home-micro: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22currentColor%22%20aria-hidden%3D%22true%22%20data-slot%3D%22icon%22%3E%20%20%3Cpath%20d%3D%22M8.543%202.232a.75.75%200%200%200-1.085%200l-5.25%205.5A.75.75%200%200%200%202.75%209H4v4a1%201%200%200%200%201%201h1a1%201%200%200%200%201-1v-1a1%201%200%201%201%202%200v1a1%201%200%200%200%201%201h1a1%201%200%200%200%201-1V9h1.25a.75.75%200%200%200%20.543-1.268l-5.25-5.5Z%22%2F%3E%3C%2Fsvg%3E');
-    -webkit-mask: var(--hero-home-micro);
-    mask: var(--hero-home-micro);
-    mask-repeat: no-repeat;
-    background-color: currentColor;
-    vertical-align: middle;
-    display: inline-block;
-    width: 1rem;
-    height: 1rem;
-  }
-  .hero-home-modern {
-    --hero-home-modern: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke-width%3D%221.5%22%20stroke%3D%22currentColor%22%20aria-hidden%3D%22true%22%20data-slot%3D%22icon%22%3E%20%20%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M8.25%2021v-4.875c0-.621.504-1.125%201.125-1.125h2.25c.621%200%201.125.504%201.125%201.125V21m0%200h4.5V3.545M12.75%2021h7.5V10.75M2.25%2021h1.5m18%200h-18M2.25%209l4.5-1.636M18.75%203l-1.5.545m0%206.205%203%201m1.5.5-1.5-.5M6.75%207.364V3h-3v18m3-13.636%2010.5-3.819%22%2F%3E%3C%2Fsvg%3E');
-    -webkit-mask: var(--hero-home-modern);
-    mask: var(--hero-home-modern);
+  .hero-information-circle {
+    --hero-information-circle: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke-width%3D%221.5%22%20stroke%3D%22currentColor%22%20aria-hidden%3D%22true%22%20data-slot%3D%22icon%22%3E%20%20%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22m11.25%2011.25.041-.02a.75.75%200%200%201%201.063.852l-.708%202.836a.75.75%200%200%200%201.063.853l.041-.021M21%2012a9%209%200%201%201-18%200%209%209%200%200%201%2018%200Zm-9-3.75h.008v.008H12V8.25Z%22%2F%3E%3C%2Fsvg%3E');
+    -webkit-mask: var(--hero-information-circle);
+    mask: var(--hero-information-circle);
     mask-repeat: no-repeat;
     background-color: currentColor;
     vertical-align: middle;
@@ -1238,10 +1227,10 @@
     width: 1.5rem;
     height: 1.5rem;
   }
-  .hero-information-circle {
-    --hero-information-circle: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke-width%3D%221.5%22%20stroke%3D%22currentColor%22%20aria-hidden%3D%22true%22%20data-slot%3D%22icon%22%3E%20%20%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22m11.25%2011.25.041-.02a.75.75%200%200%201%201.063.852l-.708%202.836a.75.75%200%200%200%201.063.853l.041-.021M21%2012a9%209%200%201%201-18%200%209%209%200%200%201%2018%200Zm-9-3.75h.008v.008H12V8.25Z%22%2F%3E%3C%2Fsvg%3E');
-    -webkit-mask: var(--hero-information-circle);
-    mask: var(--hero-information-circle);
+  .hero-key {
+    --hero-key: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke-width%3D%221.5%22%20stroke%3D%22currentColor%22%20aria-hidden%3D%22true%22%20data-slot%3D%22icon%22%3E%20%20%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M15.75%205.25a3%203%200%200%201%203%203m3%200a6%206%200%200%201-7.029%205.912c-.563-.097-1.159.026-1.563.43L10.5%2017.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1%20.43-1.563A6%206%200%201%201%2021.75%208.25Z%22%2F%3E%3C%2Fsvg%3E');
+    -webkit-mask: var(--hero-key);
+    mask: var(--hero-key);
     mask-repeat: no-repeat;
     background-color: currentColor;
     vertical-align: middle;
@@ -1377,9 +1366,6 @@
     width: calc(var(--spacing) * 5);
     height: calc(var(--spacing) * 5);
   }
-  .h-4 {
-    height: calc(var(--spacing) * 4);
-  }
   .h-full {
     height: 100%;
   }
@@ -1388,9 +1374,6 @@
   }
   .w-1\/3 {
     width: calc(1/3 * 100%);
-  }
-  .w-4 {
-    width: calc(var(--spacing) * 4);
   }
   .w-80 {
     width: calc(var(--spacing) * 80);

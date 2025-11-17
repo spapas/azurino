@@ -21,4 +21,39 @@ defmodule AzurinoWeb.PageController do
         |> json(%{error: inspect(reason)})
     end
   end
+
+  def download(conn, %{"path" => path}) do
+    case Azurino.Azure.download(path) do
+      {:ok, body} ->
+        send_download(conn, {:binary, body}, filename: Path.basename(path))
+
+      {:error, reason} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: inspect(reason)})
+    end
+  end
+
+  def download_signed(conn, signed_query) do
+    with {:ok, path} <- Azurino.SignedURL.verify(signed_query),
+         {:ok, body} <- Azurino.Azure.download(path) do
+      send_download(conn, {:binary, body}, filename: Path.basename(path))
+    else
+      {:error, :expired} ->
+        conn
+        |> put_status(:gone)
+        |> json(%{error: "Το link έχει λήξει"})
+
+      {:error, :invalid} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: "Μη έγκυρη υπογραφή"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:bad_request)
+
+        |> json(%{error: inspect(reason)})
+    end
+  end
 end
