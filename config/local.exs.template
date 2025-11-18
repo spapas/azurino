@@ -1,0 +1,7 @@
+import Config
+
+config :azurino, sas_url: ""
+config :azurino, secret_key: ""
+config :azurino, :api_token, ""
+
+IO.puts("Local config loaded")
