@@ -23,6 +23,15 @@ defmodule AzurinoWeb.Router do
 
     get "/health", Api.AzureController, :index
     get "/health/:id", Api.AzureController, :show
+
+    # Storage endpoints
+    post "/upload", Api.AzureController, :upload
+    get "/download/:filename", Api.AzureController, :download
+    get "/download-stream/:filename", Api.AzureController, :download_stream
+    delete "/delete/:filename", Api.AzureController, :delete
+    get "/exists/:filename", Api.AzureController, :exists
+    get "/info/:filename", Api.AzureController, :info
+    get "/list", Api.AzureController, :list
   end
 
   scope "/", AzurinoWeb do
