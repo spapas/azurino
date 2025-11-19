@@ -1,39 +1,39 @@
 defmodule Azurino.Azure do
   require Logger
   @moduledoc "List Azure container blobs via SAS URL"
-  @sas_url Application.compile_env(:azurino, :sas_url)
 
-  def sas_url, do: @sas_url
+  @default_timeout 30_000
+  @stream_timeout 5_000
 
-  def list_container(container_sas_url \\ @sas_url) when is_binary(container_sas_url) do
+  defp get_sas_url do
+    Application.get_env(:azurino, :sas_url)
+  end
+
+  def sas_url, do: get_sas_url()
+
+  def list_container(_container_sas_url \\ nil) do
     Azurino.BlobCache.list_container()
   end
 
-  def list_container_no_cache(container_sas_url \\ @sas_url) when is_binary(container_sas_url) do
+  def list_container_no_cache(container_sas_url \\ nil) do
+    sas_url = container_sas_url || get_sas_url()
+
     list_url =
-      if String.contains?(container_sas_url, "?") do
-        container_sas_url <> "&restype=container&comp=list"
+      if String.contains?(sas_url, "?") do
+        sas_url <> "&restype=container&comp=list"
       else
-        container_sas_url <> "?restype=container&comp=list"
+        sas_url <> "?restype=container&comp=list"
       end
 
-    case HTTPoison.get(list_url) do
-      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        Logger.debug("Raw Azure Response: #{body}")
-        parse_blob_list(body)
-
-      {:ok, %HTTPoison.Response{status_code: code, body: body}} ->
-        Logger.debug("Raw Azure Response: #{body}")
-        {:error, {:http_error, code, body}}
-
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        Logger.debug("Raw Azure Response: #{inspect(reason)}")
-        {:error, {:request_failed, reason}}
-    end
+    list_url
+    |> Req.get(receive_timeout: @default_timeout)
+    |> handle_response(&parse_blob_list/1)
   end
 
-  def list_folder(folder_path \\ "", container_sas_url \\ @sas_url)
-      when is_binary(container_sas_url) and is_binary(folder_path) do
+  def list_folder(folder_path \\ "", container_sas_url \\ nil)
+      when is_binary(folder_path) do
+    sas_url = container_sas_url || get_sas_url()
+
     # Normalize folder path
     normalized_folder =
       case String.trim(folder_path) do
@@ -52,36 +52,27 @@ defmodule Azurino.Azure do
 
     # Build URL - when prefix is empty, we still include it but with empty value
     list_url =
-      if String.contains?(container_sas_url, "?") do
-        container_sas_url <>
+      if String.contains?(sas_url, "?") do
+        sas_url <>
           "&restype=container&comp=list&prefix=" <>
           URI.encode(normalized_folder) <>
           "&delimiter=" <> URI.encode("/")
       else
-        container_sas_url <>
+        sas_url <>
           "?restype=container&comp=list&prefix=" <>
           URI.encode(normalized_folder) <>
           "&delimiter=" <> URI.encode("/")
       end
 
-    case HTTPoison.get(list_url) do
-      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        Logger.debug("Raw Azure Response: #{body}")
-        parse_blob_list(body)
-
-      {:ok, %HTTPoison.Response{status_code: code, body: body}} ->
-        Logger.debug("Raw Azure Response: #{body}")
-        {:error, {:http_error, code, body}}
-
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        Logger.debug("Raw Azure Response: #{inspect(reason)}")
-        {:error, {:request_failed, reason}}
-    end
+    list_url
+    |> Req.get(receive_timeout: @default_timeout)
+    |> handle_response(&parse_blob_list/1)
   end
 
   def upload(container_sas_url, remote_folder, local_file_path)
-      when is_binary(container_sas_url) and is_binary(remote_folder) and
-             is_binary(local_file_path) do
+      when is_binary(remote_folder) and is_binary(local_file_path) do
+    sas_url = container_sas_url || get_sas_url()
+
     # Read the file
     case File.read(local_file_path) do
       {:ok, file_content} ->
@@ -99,22 +90,22 @@ defmodule Azurino.Azure do
           end
 
         # Build upload URL
-        upload_url = build_blob_url(container_sas_url, blob_path)
+        upload_url = build_blob_url(sas_url, blob_path)
 
         # Upload the file
         headers = [
           {"x-ms-blob-type", "BlockBlob"},
-          {"Content-Type", get_content_type(filename)}
+          {"content-type", get_content_type(filename)}
         ]
 
-        case HTTPoison.put(upload_url, file_content, headers) do
-          {:ok, %HTTPoison.Response{status_code: code}} when code in 200..299 ->
+        case Req.put(upload_url, body: file_content, headers: headers, receive_timeout: @default_timeout) do
+          {:ok, %Req.Response{status: status}} when status in 200..299 ->
             {:ok, blob_path}
 
-          {:ok, %HTTPoison.Response{status_code: code, body: body}} ->
-            {:error, {:http_error, code, body}}
+          {:ok, %Req.Response{status: status, body: body}} ->
+            {:error, {:http_error, status, body}}
 
-          {:error, %HTTPoison.Error{reason: reason}} ->
+          {:error, reason} ->
             {:error, {:request_failed, reason}}
         end
 
@@ -126,21 +117,22 @@ defmodule Azurino.Azure do
   @doc """
   Downloads a blob and returns it as a binary.
   """
-  def download(blob_path, container_sas_url \\ @sas_url)
-      when is_binary(container_sas_url) and is_binary(blob_path) do
-    download_url = build_blob_url(container_sas_url, blob_path)
+  def download(blob_path, container_sas_url \\ nil)
+      when is_binary(blob_path) do
+    sas_url = container_sas_url || get_sas_url()
+    download_url = build_blob_url(sas_url, blob_path)
 
-    case HTTPoison.get(download_url) do
-      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+    case Req.get(download_url, receive_timeout: @default_timeout) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, body}
 
-      {:ok, %HTTPoison.Response{status_code: 404}} ->
+      {:ok, %Req.Response{status: 404}} ->
         {:error, :not_found}
 
-      {:ok, %HTTPoison.Response{status_code: code, body: body}} ->
-        {:error, {:http_error, code, body}}
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:http_error, status, body}}
 
-      {:error, %HTTPoison.Error{reason: reason}} ->
+      {:error, reason} ->
         {:error, {:request_failed, reason}}
     end
   end
@@ -149,62 +141,49 @@ defmodule Azurino.Azure do
   Downloads a blob as a stream that can be used in Phoenix responses.
   Returns a stream that yields chunks of data.
   """
-  def download_stream(blob_path, container_sas_url \\ @sas_url)
-      when is_binary(container_sas_url) and is_binary(blob_path) do
-    download_url = build_blob_url(container_sas_url, blob_path)
+  def download_stream(blob_path, container_sas_url \\ nil)
+      when is_binary(blob_path) do
+    sas_url = container_sas_url || get_sas_url()
+    download_url = build_blob_url(sas_url, blob_path)
 
-    # Return a stream that will fetch the data when consumed
+    # Req supports streaming via into: option
     Stream.resource(
-      fn ->
-        # Start the HTTP request with stream_to option
-        case HTTPoison.get(download_url, [], stream_to: self(), async: :once) do
-          {:ok, %HTTPoison.AsyncResponse{id: id}} -> {:ok, id}
-          {:error, reason} -> {:error, reason}
+      fn -> nil end,
+      fn acc ->
+        case acc do
+          nil ->
+            case Req.get(download_url, into: :self, receive_timeout: @stream_timeout) do
+              {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
+                {[body], :done}
+
+              {:ok, %Req.Response{status: 404}} ->
+                {:halt, {:error, :not_found}}
+
+              {:ok, %Req.Response{status: status}} ->
+                {:halt, {:error, {:http_error, status}}}
+
+              {:error, reason} ->
+                {:halt, {:error, reason}}
+            end
+
+          :done ->
+            {:halt, :done}
         end
       end,
-      fn
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-
-        {:ok, id} ->
-          receive do
-            %HTTPoison.AsyncStatus{id: ^id, code: 200} ->
-              HTTPoison.stream_next(%HTTPoison.AsyncResponse{id: id})
-              {[], {:ok, id}}
-
-            %HTTPoison.AsyncStatus{id: ^id, code: code} ->
-              {:halt, {:error, {:http_error, code}}}
-
-            %HTTPoison.AsyncHeaders{id: ^id} ->
-              HTTPoison.stream_next(%HTTPoison.AsyncResponse{id: id})
-              {[], {:ok, id}}
-
-            %HTTPoison.AsyncChunk{id: ^id, chunk: chunk} ->
-              HTTPoison.stream_next(%HTTPoison.AsyncResponse{id: id})
-              {[chunk], {:ok, id}}
-
-            %HTTPoison.AsyncEnd{id: ^id} ->
-              {:halt, {:ok, id}}
-          after
-            5000 -> {:halt, {:error, :timeout}}
-          end
-      end,
-      fn
-        {:ok, id} -> :hackney.close(id)
-        {:error, _} -> :ok
-      end
+      fn _ -> :ok end
     )
   end
 
   @doc """
   Gets metadata about a blob (size, content-type, etc.) without downloading it.
   """
-  def get_blob_metadata(blob_path, container_sas_url \\ @sas_url)
-      when is_binary(container_sas_url) and is_binary(blob_path) do
-    download_url = build_blob_url(container_sas_url, blob_path)
+  def get_blob_metadata(blob_path, container_sas_url \\ nil)
+      when is_binary(blob_path) do
+    sas_url = container_sas_url || get_sas_url()
+    download_url = build_blob_url(sas_url, blob_path)
 
-    case HTTPoison.head(download_url) do
-      {:ok, %HTTPoison.Response{status_code: 200, headers: headers}} ->
+    case Req.head(download_url, receive_timeout: @default_timeout) do
+      {:ok, %Req.Response{status: 200, headers: headers}} ->
         metadata = %{
           content_type: get_header(headers, "content-type"),
           content_length: get_header(headers, "content-length") |> parse_integer(),
@@ -214,21 +193,25 @@ defmodule Azurino.Azure do
 
         {:ok, metadata}
 
-      {:ok, %HTTPoison.Response{status_code: 404}} ->
+      {:ok, %Req.Response{status: 404}} ->
         {:error, :not_found}
 
-      {:ok, %HTTPoison.Response{status_code: code, body: body}} ->
-        {:error, {:http_error, code, body}}
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:http_error, status, body}}
 
-      {:error, %HTTPoison.Error{reason: reason}} ->
+      {:error, reason} ->
         {:error, {:request_failed, reason}}
     end
   end
 
   defp get_header(headers, key) do
-    Enum.find_value(headers, fn {k, v} ->
-      if String.downcase(k) == String.downcase(key), do: v
-    end)
+    case Enum.find_value(headers, fn {k, v} ->
+           if String.downcase(k) == String.downcase(key), do: v
+         end) do
+      [value | _] when is_binary(value) -> value
+      value when is_binary(value) -> value
+      _ -> nil
+    end
   end
 
   defp parse_integer(nil), do: nil
@@ -255,36 +238,44 @@ defmodule Azurino.Azure do
   end
 
   defp get_content_type(filename) do
-    case Path.extname(filename) |> String.downcase() do
-      ".txt" -> "text/plain"
-      ".json" -> "application/json"
-      ".xml" -> "application/xml"
-      ".pdf" -> "application/pdf"
-      ".jpg" -> "image/jpeg"
-      ".jpeg" -> "image/jpeg"
-      ".png" -> "image/png"
-      ".gif" -> "image/gif"
-      ".html" -> "text/html"
-      ".css" -> "text/css"
-      ".js" -> "application/javascript"
-      ".zip" -> "application/zip"
-      _ -> "application/octet-stream"
-    end
+    MIME.from_path(filename)
+  end
+
+  # Common HTTP response handler
+  defp handle_response({:ok, %Req.Response{status: 200, body: body}}, parser_fn) do
+    Logger.debug("Raw Azure Response: #{inspect(body)}")
+    parser_fn.(body)
+  end
+
+  defp handle_response({:ok, %Req.Response{status: status, body: body}}, _parser_fn) do
+    Logger.debug("Raw Azure Response: #{inspect(body)}")
+    {:error, {:http_error, status, body}}
+  end
+
+  defp handle_response({:error, reason}, _parser_fn) do
+    Logger.debug("Raw Azure Response: #{inspect(reason)}")
+    {:error, {:request_failed, reason}}
   end
 
   defp parse_blob_list(xml_body) do
-    xml_body =
-      case xml_body do
-        <<0xEF, 0xBB, 0xBF, rest::binary>> -> rest
-        other -> other
-      end
+    try do
+      xml_body =
+        case xml_body do
+          <<0xEF, 0xBB, 0xBF, rest::binary>> -> rest
+          other -> other
+        end
 
-    {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
+      {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
 
-    files = extract_blob_names(doc)
-    folders = extract_blob_prefix_names(doc)
+      files = extract_blob_names(doc)
+      folders = extract_blob_prefix_names(doc)
 
-    {:ok, %{files: files, folders: folders}}
+      {:ok, %{files: files, folders: folders}}
+    rescue
+      e ->
+        Logger.error("Failed to parse XML response: #{inspect(e)}")
+        {:error, {:xml_parse_error, e}}
+    end
   end
 
   defp extract_blob_names(doc) do

@@ -2,9 +2,12 @@ defmodule Azurino.SignedURL do
   import Bitwise
 
   @default_expires_in 300
-  @secret_key Application.compile_env(:azurino, :secret_key)
 
-  def secret_key, do: @secret_key
+  defp get_secret_key do
+    Application.get_env(:azurino, :secret_key)
+  end
+
+  def secret_key, do: get_secret_key()
 
   @moduledoc """
   Module για δημιουργία και επαλήθευση signed URLs για secure file sharing.
@@ -40,8 +43,8 @@ defmodule Azurino.SignedURL do
 
   String με το πλήρες signed URL.
   """
-  def sign(opts, secret_key \\ @secret_key) do
-    # secret_key = Keyword.fetch!(opts, :secret_key)
+  def sign(opts, secret_key \\ nil) do
+    secret_key = secret_key || get_secret_key()
     path = Keyword.fetch!(opts, :path)
     expires_in = Keyword.get(opts, :expires_in, @default_expires_in)
     metadata = Keyword.get(opts, :metadata, %{})
@@ -80,7 +83,8 @@ defmodule Azurino.SignedURL do
     * `{:error, :invalid}` - Αν η υπογραφή δεν είναι έγκυρη
     * `{:error, :missing_params}` - Αν λείπουν απαραίτητες παράμετροι
   """
-  def verify(params, secret_key \\ @secret_key, opts \\ []) do
+  def verify(params, secret_key \\ nil, opts \\ []) do
+    secret_key = secret_key || get_secret_key()
     extract_metadata = Keyword.get(opts, :extract_metadata, false)
 
     with {:ok, signature} <- Map.fetch(params, "signature"),
@@ -111,7 +115,7 @@ defmodule Azurino.SignedURL do
         end
       end
     else
-      :error -> {:error, :missing_params1}
+      :error -> {:error, :missing_params}
     end
   end
 
