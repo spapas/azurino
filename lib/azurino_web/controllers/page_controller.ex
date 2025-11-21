@@ -78,4 +78,25 @@ defmodule AzurinoWeb.PageController do
     |> put_status(:bad_request)
     |> json(%{error: "Missing file or path"})
   end
+
+  def delete(conn, %{"path" => path}) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+
+    case storage.delete(path) do
+      {:ok, _} ->
+        conn
+        |> put_flash(:info, "Deleted #{path}")
+        |> redirect(to: ~p"/?path=#{Path.dirname(path)}")
+
+      {:error, :not_found} ->
+        conn
+        |> put_flash(:error, "File not found: #{path}")
+        |> redirect(to: ~p"/")
+
+      {:error, reason} ->
+        conn
+        |> put_flash(:error, "Delete failed: #{inspect(reason)}")
+        |> redirect(to: ~p"/")
+    end
+  end
 end

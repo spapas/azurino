@@ -42,6 +42,7 @@ defmodule AzurinoWeb.Router do
     get "/metadata/", PageController, :metadata
     get "/download/", PageController, :download
     get "/download_signed/", PageController, :download_signed
+    delete "/delete", PageController, :delete
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
