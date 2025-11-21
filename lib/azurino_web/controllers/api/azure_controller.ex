@@ -78,7 +78,7 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Delete file from Azure storage (not implemented in Azure module yet)
-  def delete(conn, %{"filename" => filename}) do
+  def delete(conn, %{"filename" => _filename}) do
     # Azure module doesn't have delete yet
     # You'd need to implement it using DELETE verb to blob URL
 
