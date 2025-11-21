@@ -3,6 +3,18 @@
   <.link class="underline" href={~p"/"}>
     <.icon name="hero-home" class="text-gray-700 dark:text-gray-300" />
   </.link>
+  
+  <h3 class="mt-4">Upload file to this folder</h3>
+  <form action={~p"/upload"} method="post" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+    <input type="hidden" name="path" value={@conn.params["path"] || ""} />
+    <div class="mt-2">
+      <input type="file" name="file" />
+    </div>
+    <div class="mt-2">
+      <button type="submit" class="btn">Upload</button>
+    </div>
+  </form>
   <ul>
   <%= for folder <- @folders do %>
     <li>

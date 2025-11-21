@@ -38,6 +38,7 @@ defmodule AzurinoWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/", PageController, :home
+    post "/upload", PageController, :upload
     get "/metadata/", PageController, :metadata
     get "/download/", PageController, :download
     get "/download_signed/", PageController, :download_signed

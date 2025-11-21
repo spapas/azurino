@@ -8,7 +8,8 @@ defmodule AzurinoWeb.Plugs.ApiAuth do
 
     case get_req_header(conn, "authorization") do
       ["Bearer " <> token] when token == expected_token ->
-        conn  # σωστό token, προχωράμε
+        # σωστό token, προχωράμε
+        conn
 
       _ ->
         conn

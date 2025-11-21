@@ -34,60 +34,66 @@ defmodule Azurino.Azure do
       when is_binary(folder_path) do
     sas_url = container_sas_url || get_sas_url()
 
-    # Normalize folder path
-    normalized_folder =
-      case String.trim(folder_path) do
-        # Root folder - empty prefix
-        "" ->
-          ""
+    # If no SAS/container URL is configured, return empty listing instead of failing
+    if is_nil(sas_url) or sas_url == "" do
+      {:ok, %{files: [], folders: []}}
+    else
+      # Normalize folder path
+      normalized_folder =
+        case String.trim(folder_path) do
+          # Root folder - empty prefix
+          "" ->
+            ""
 
-        # Non-empty folder - ensure trailing slash
-        path ->
-          if String.ends_with?(path, "/") do
-            path
-          else
-            path <> "/"
-          end
-      end
+          # Non-empty folder - ensure trailing slash
+          path ->
+            if String.ends_with?(path, "/") do
+              path
+            else
+              path <> "/"
+            end
+        end
 
-    # Build URL - when prefix is empty, we still include it but with empty value
-    list_url =
-      if String.contains?(sas_url, "?") do
-        sas_url <>
-          "&restype=container&comp=list&prefix=" <>
-          URI.encode(normalized_folder) <>
-          "&delimiter=" <> URI.encode("/")
-      else
-        sas_url <>
-          "?restype=container&comp=list&prefix=" <>
-          URI.encode(normalized_folder) <>
-          "&delimiter=" <> URI.encode("/")
-      end
+      # Build URL - when prefix is empty, we still include it but with empty value
+      list_url =
+        if String.contains?(sas_url, "?") do
+          sas_url <>
+            "&restype=container&comp=list&prefix=" <>
+            URI.encode(normalized_folder) <>
+            "&delimiter=" <> URI.encode("/")
+        else
+          sas_url <>
+            "?restype=container&comp=list&prefix=" <>
+            URI.encode(normalized_folder) <>
+            "&delimiter=" <> URI.encode("/")
+        end
 
-    list_url
-    |> Req.get(receive_timeout: @default_timeout)
-    |> handle_response(&parse_blob_list/1)
+      list_url
+      |> Req.get(receive_timeout: @default_timeout)
+      |> handle_response(&parse_blob_list/1)
+    end
   end
 
-  def upload(container_sas_url, remote_folder, local_file_path)
+  def upload(container_sas_url, remote_folder, local_file_path, original_filename \\ nil)
       when is_binary(remote_folder) and is_binary(local_file_path) do
     sas_url = container_sas_url || get_sas_url()
 
     # Read the file
     case File.read(local_file_path) do
       {:ok, file_content} ->
-        # Extract filename from local path
-        filename = Path.basename(local_file_path)
+        # Determine filename: prefer provided original filename (from Plug.Upload),
+        # otherwise fall back to the local path basename
+        filename = original_filename || Path.basename(local_file_path)
+
+        # Normalize folder
+        folder =
+          if remote_folder in ["", "/"], do: "", else: String.trim_trailing(remote_folder, "/")
+
+        # Ensure unique filename if file already exists in container/folder
+        unique_filename = make_unique_filename(sas_url, folder, filename)
 
         # Build blob path (remote_folder/filename)
-        blob_path =
-          if remote_folder == "" or remote_folder == "/" do
-            filename
-          else
-            # Remove trailing slash from folder if present
-            folder = String.trim_trailing(remote_folder, "/")
-            "#{folder}/#{filename}"
-          end
+        blob_path = if folder == "", do: unique_filename, else: "#{folder}/#{unique_filename}"
 
         # Build upload URL
         upload_url = build_blob_url(sas_url, blob_path)
@@ -95,10 +101,14 @@ defmodule Azurino.Azure do
         # Upload the file
         headers = [
           {"x-ms-blob-type", "BlockBlob"},
-          {"content-type", get_content_type(filename)}
+          {"content-type", get_content_type(unique_filename)}
         ]
 
-        case Req.put(upload_url, body: file_content, headers: headers, receive_timeout: @default_timeout) do
+        case Req.put(upload_url,
+               body: file_content,
+               headers: headers,
+               receive_timeout: @default_timeout
+             ) do
           {:ok, %Req.Response{status: status}} when status in 200..299 ->
             {:ok, blob_path}
 
@@ -111,6 +121,110 @@ defmodule Azurino.Azure do
 
       {:error, reason} ->
         {:error, {:file_read_error, reason}}
+    end
+  end
+
+  @doc false
+  # Public wrapper to make testing easier. Returns the filename to use
+  # If `exists_fun` is provided, it will be called as `exists_fun.(sas_url, blob_path)`
+  # to determine whether a blob exists. Defaults to internal `exists_in_container?/2`.
+  def make_unique_filename(
+        sas_url,
+        folder,
+        filename,
+        exists_fun \\ &exists_in_container?/2,
+        max_attempts \\ 5
+      ) do
+    base = Path.rootname(filename)
+    ext = Path.extname(filename)
+
+    try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, 0)
+  end
+
+  defp try_generate_unique(_sas, folder, base, ext, _exists_fun, _max, _attempt)
+       when folder == nil do
+    # fallback
+    "#{base}#{ext}"
+  end
+
+  defp try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, attempt)
+       when attempt == 0 do
+    candidate = "#{base}#{ext}"
+    blob_path = if(folder == "", do: candidate, else: "#{folder}/#{candidate}")
+
+    case exists_fun.(sas_url, blob_path) do
+      false ->
+        candidate
+
+      true ->
+        if max_attempts <= 1 do
+          # single attempt only -> fallback to timestamp
+          timestamp_fallback(base, ext)
+        else
+          try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, 1)
+        end
+    end
+  end
+
+  defp try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, attempt)
+       when attempt > 0 and attempt < max_attempts do
+    rand = random_string(10)
+    candidate = "#{base}.#{rand}#{ext}"
+    blob_path = if(folder == "", do: candidate, else: "#{folder}/#{candidate}")
+
+    case exists_fun.(sas_url, blob_path) do
+      false ->
+        candidate
+
+      true ->
+        try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, attempt + 1)
+    end
+  end
+
+  defp try_generate_unique(_sas_url, _folder, base, ext, _exists_fun, _max_attempts, _attempt) do
+    # Exhausted attempts -> use timestamp fallback
+    timestamp_fallback(base, ext)
+  end
+
+  defp timestamp_fallback(base, ext) do
+    ts = System.system_time(:second)
+    "#{base}.#{ts}#{ext}"
+  end
+
+  defp exists_in_container?(sas_url, blob_path) do
+    case get_blob_metadata(blob_path, sas_url) do
+      {:ok, _} -> true
+      {:error, :not_found} -> false
+      _ -> false
+    end
+  end
+
+  defp random_string(len) when is_integer(len) and len > 0 do
+    :crypto.strong_rand_bytes(len)
+    |> Base.url_encode64(padding: false)
+    |> binary_part(0, len)
+  end
+
+  @doc """
+  Deletes a blob from Azure storage.
+  """
+  def delete(blob_path, container_sas_url \\ nil)
+      when is_binary(blob_path) do
+    sas_url = container_sas_url || get_sas_url()
+    delete_url = build_blob_url(sas_url, blob_path)
+
+    case Req.delete(delete_url, receive_timeout: @default_timeout) do
+      {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        {:ok, blob_path}
+
+      {:ok, %Req.Response{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:http_error, status, body}}
+
+      {:error, reason} ->
+        {:error, {:request_failed, reason}}
     end
   end
 

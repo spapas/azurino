@@ -52,8 +52,30 @@ defmodule AzurinoWeb.PageController do
       {:error, reason} ->
         conn
         |> put_status(:bad_request)
-
         |> json(%{error: inspect(reason)})
     end
+  end
+
+  def upload(conn, %{"path" => path, "file" => %Plug.Upload{} = upload}) do
+    # upload.path is the temporary file path on the server
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+
+    case storage.upload(nil, path, upload.path, upload.filename) do
+      {:ok, _blob_path} ->
+        conn
+        |> put_flash(:info, "Uploaded #{upload.filename} to #{path}")
+        |> redirect(to: ~p"/?path=#{path}")
+
+      {:error, reason} ->
+        conn
+        |> put_flash(:error, "Upload failed: #{inspect(reason)}")
+        |> redirect(to: ~p"/?path=#{path}")
+    end
+  end
+
+  def upload(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "Missing file or path"})
   end
 end
