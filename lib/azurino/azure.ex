@@ -25,9 +25,10 @@ defmodule Azurino.Azure do
         sas_url <> "?restype=container&comp=list"
       end
 
-    list_url
-    |> Req.get(receive_timeout: @default_timeout)
-    |> handle_response(&parse_blob_list/1)
+    {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
+    ms = usec / 1000
+    Logger.info("Azure list_container_no_cache: url=#{list_url} elapsed_ms=#{ms}")
+    handle_response(resp, &parse_blob_list/1)
   end
 
   def list_folder(folder_path \\ "", container_sas_url \\ nil)
@@ -68,9 +69,10 @@ defmodule Azurino.Azure do
             "&delimiter=" <> URI.encode("/")
         end
 
-      list_url
-      |> Req.get(receive_timeout: @default_timeout)
-      |> handle_response(&parse_blob_list/1)
+      {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
+      ms = usec / 1000
+      Logger.info("Azure list_folder: folder=#{normalized_folder} url=#{list_url} elapsed_ms=#{ms}")
+      handle_response(resp, &parse_blob_list/1)
     end
   end
 
@@ -104,11 +106,17 @@ defmodule Azurino.Azure do
           {"content-type", get_content_type(unique_filename)}
         ]
 
-        case Req.put(upload_url,
-               body: file_content,
-               headers: headers,
-               receive_timeout: @default_timeout
-             ) do
+        {usec, put_res} = :timer.tc(fn ->
+          Req.put(upload_url,
+            body: file_content,
+            headers: headers,
+            receive_timeout: @default_timeout
+          )
+        end)
+        put_ms = usec / 1000
+        Logger.info("Azure upload: url=#{upload_url} filename=#{unique_filename} elapsed_ms=#{put_ms}")
+
+        case put_res do
           {:ok, %Req.Response{status: status}} when status in 200..299 ->
             {:ok, blob_path}
 
@@ -213,7 +221,11 @@ defmodule Azurino.Azure do
     sas_url = container_sas_url || get_sas_url()
     delete_url = build_blob_url(sas_url, blob_path)
 
-    case Req.delete(delete_url, receive_timeout: @default_timeout) do
+    {usec, del_res} = :timer.tc(fn -> Req.delete(delete_url, receive_timeout: @default_timeout) end)
+    del_ms = usec / 1000
+    Logger.info("Azure delete: url=#{delete_url} elapsed_ms=#{del_ms}")
+
+    case del_res do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
         {:ok, blob_path}
 
@@ -236,7 +248,11 @@ defmodule Azurino.Azure do
     sas_url = container_sas_url || get_sas_url()
     download_url = build_blob_url(sas_url, blob_path)
 
-    case Req.get(download_url, receive_timeout: @default_timeout) do
+    {usec, get_res} = :timer.tc(fn -> Req.get(download_url, receive_timeout: @default_timeout) end)
+    get_ms = usec / 1000
+    Logger.info("Azure download: url=#{download_url} elapsed_ms=#{get_ms}")
+
+    case get_res do
       {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, body}
 
@@ -266,7 +282,11 @@ defmodule Azurino.Azure do
       fn acc ->
         case acc do
           nil ->
-            case Req.get(download_url, into: :self, receive_timeout: @stream_timeout) do
+            {usec, stream_res} = :timer.tc(fn -> Req.get(download_url, into: :self, receive_timeout: @stream_timeout) end)
+            stream_ms = usec / 1000
+            Logger.info("Azure download_stream: url=#{download_url} elapsed_ms=#{stream_ms}")
+
+            case stream_res do
               {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
                 {[body], :done}
 
@@ -296,7 +316,11 @@ defmodule Azurino.Azure do
     sas_url = container_sas_url || get_sas_url()
     download_url = build_blob_url(sas_url, blob_path)
 
-    case Req.head(download_url, receive_timeout: @default_timeout) do
+    {usec, head_res} = :timer.tc(fn -> Req.head(download_url, receive_timeout: @default_timeout) end)
+    head_ms = usec / 1000
+    Logger.info("Azure head (metadata): url=#{download_url} elapsed_ms=#{head_ms}")
+
+    case head_res do
       {:ok, %Req.Response{status: 200, headers: headers}} ->
         metadata = %{
           content_type: get_header(headers, "content-type"),
@@ -357,7 +381,7 @@ defmodule Azurino.Azure do
 
   # Common HTTP response handler
   defp handle_response({:ok, %Req.Response{status: 200, body: body}}, parser_fn) do
-    Logger.debug("Raw Azure Response: #{inspect(body)}")
+    Logger.debug("Raw Azure Response (200) body_size=#{byte_size(body)}")
     parser_fn.(body)
   end
 
@@ -379,12 +403,15 @@ defmodule Azurino.Azure do
           other -> other
         end
 
-      {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
+      {usec, result} = :timer.tc(fn ->
+        {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
+        files = extract_blob_names(doc)
+        folders = extract_blob_prefix_names(doc)
+        {:ok, %{files: files, folders: folders}}
+      end)
 
-      files = extract_blob_names(doc)
-      folders = extract_blob_prefix_names(doc)
-
-      {:ok, %{files: files, folders: folders}}
+      Logger.info("parse_blob_list elapsed_ms=#{usec / 1000}")
+      result
     rescue
       e ->
         Logger.error("Failed to parse XML response: #{inspect(e)}")

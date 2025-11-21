@@ -122,7 +122,7 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-AZURE_API_BASE_URL = "http://localhost:4000/api"
+AZURE_API_BASE_URL = "http://127.0.0.1:4000/api"
 AZURE_STORAGE_FOLDER = "uploads"  # Optional, default folder
 
 STORAGES = {
@@ -131,5 +131,29 @@ STORAGES = {
     },
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+
+# Logging configuration to surface storage/network timings during development.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        # our storage module logger
+        "djazurino.djazurino.storages": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # surface broader app logs if needed
+        "djazurino": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
