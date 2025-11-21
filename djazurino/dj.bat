@@ -1,0 +1,2 @@
+
+python -Wall manage.py %*

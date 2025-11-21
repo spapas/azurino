@@ -32,3 +32,4 @@ azurino-*.tar
 config/local.exs
 *.pyc
 manual_test*.txt
+db.sqlite3
