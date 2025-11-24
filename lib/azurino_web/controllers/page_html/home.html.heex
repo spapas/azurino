@@ -10,14 +10,14 @@
         <p class="text-lg">Hello, <%= @current_scope.user.email %>!</p>
         <.link
           href={~p"/azure"}
-          class="rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white hover:bg-blue-700 transition"
+          class="btn btn-primary btn-lg"
         >
           Continue to File Browser
         </.link>
         <.link
           href={~p"/users/log-out"}
           method="delete"
-          class="text-sm text-gray-600 hover:text-gray-900 underline"
+          class="link link-hover text-sm"
         >
           Log out
         </.link>
@@ -25,15 +25,9 @@
         <p class="text-lg text-gray-600">Please log in to access your files</p>
         <.link
           href={~p"/users/log-in"}
-          class="rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white hover:bg-blue-700 transition"
+          class="btn btn-primary btn-lg"
         >
           Log In
-        </.link>
-        <.link
-          href={~p"/users/register"}
-          class="text-sm text-gray-600 hover:text-gray-900 underline"
-        >
-          Register
         </.link>
       <% end %>
     </div>
