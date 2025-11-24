@@ -43,14 +43,20 @@ defmodule AzurinoWeb.Router do
   end
 
   scope "/", AzurinoWeb do
-    pipe_through [:browser, :require_authenticated_user]
+    pipe_through :browser
 
     get "/", PageController, :home
-    post "/upload", PageController, :upload
-    get "/metadata/", PageController, :metadata
-    get "/download/", PageController, :download
-    get "/download_signed/", PageController, :download_signed
-    delete "/delete", PageController, :delete
+  end
+
+  scope "/", AzurinoWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    get "/azure", AzurePageController, :index
+    post "/azure/upload", AzurePageController, :upload
+    get "/azure/metadata/", AzurePageController, :metadata
+    get "/azure/download/", AzurePageController, :download
+    get "/azure/download_signed/", AzurePageController, :download_signed
+    delete "/azure/delete", AzurePageController, :delete
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
