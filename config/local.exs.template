@@ -1,7 +1,19 @@
 import Config
 
+
 config :azurino, sas_url: ""
+
+# secret_key: Internal key used to sign and verify download URLs
+# - Never share this key with external apps
+# - Used internally to create HMAC-SHA256 signatures for temporary download URLs
+# - Prevents URL tampering and unauthorized access
+
 config :azurino, secret_key: ""
+
+# api_token: Bearer token for external API authentication
+# - Share this with trusted external apps (e.g., Django backend)
+# - Used in Authorization header: "Bearer <token>"
+# - Authenticates API calls to /api/upload, /api/list, etc.
 config :azurino, :api_token, ""
 
 IO.puts("Local config loaded")
