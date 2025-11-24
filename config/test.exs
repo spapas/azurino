@@ -31,3 +31,9 @@ config :logger, level: :warning
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# Configure test secret key for signed URLs
+config :azurino, :secret_key, "test-secret-key-for-signed-urls"
+
+# Configure test API token
+config :azurino, :api_token, "test-api-token-123"

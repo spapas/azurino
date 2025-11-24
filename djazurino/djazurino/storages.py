@@ -213,23 +213,42 @@ class AzureBlobStorage(Storage):
     def url(self, name):  # type: ignore[override]
         """
         Get signed URL for file access.
-        Returns the Azure Blob URL with SAS token.
+        Returns a URL that can be used to download the file through the signed URL endpoint.
         """
-        url = f"{self.base_url}/download/{quote(name, safe='')}"
+        # Get signed URL parameters from Phoenix API
+        api_url = f"{self.base_url}/download/{quote(name, safe='')}"
         
         start = time.monotonic()
         try:
-            response = self._session.get(url, headers=self._get_headers(), timeout=10)
+            response = self._session.get(api_url, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
-            logger.info("Signed URL request: url=%s status=%s elapsed=%.3fs", url, response.status_code, elapsed)
+            logger.info("Signed URL request: url=%s status=%s elapsed=%.3fs", api_url, response.status_code, elapsed)
 
             if response.status_code == 200:
                 data = response.json()
-                return data.get('url')
+                signed_url_params = data.get('signed_url')
+                
+                if not signed_url_params:
+                    logger.warning("No signed_url in response for %s", name)
+                    return None
+                
+                # Build the download-signed URL with query parameters
+                # Format: /api/download-signed?signature=...&expires=...&path=...
+                from urllib.parse import urlencode
+                query_string = urlencode({
+                    'signature': signed_url_params.get('signature'),
+                    'expires': signed_url_params.get('expires'),
+                    'path': signed_url_params.get('path')
+                })
+                
+                # Return the full URL to the download-signed endpoint
+                download_url = f"{self.base_url}/download-signed?{query_string}"
+                return download_url
+            
             return None
         except requests.exceptions.RequestException as e:
             elapsed = time.monotonic() - start
-            logger.exception("Signed URL request failed: url=%s elapsed=%.3fs error=%s", url, elapsed, e)
+            logger.exception("Signed URL request failed: url=%s elapsed=%.3fs error=%s", api_url, elapsed, e)
             return None
     
     def size(self, name):

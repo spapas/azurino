@@ -24,6 +24,9 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
     body = Jason.decode!(conn.resp_body)
     assert body["status"] == "success"
     assert body["blob_path"] == "myfolder/sync-time.bat"
-    assert body["url"] =~ "myfolder/sync-time.bat"
+    # Check that signed_url is present and contains path
+    assert body["signed_url"]["path"] == "myfolder/sync-time.bat"
+    assert body["signed_url"]["signature"]
+    assert body["signed_url"]["expires"]
   end
 end

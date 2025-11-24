@@ -18,6 +18,14 @@ defmodule AzurinoWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Public API endpoints (no auth required - authenticated via signed URLs or other means)
+  scope "/api", AzurinoWeb do
+    pipe_through :api
+
+    # Signed URL download - authenticated via signature in URL params
+    get "/download-signed", Api.AzureController, :download_signed
+  end
+
   scope "/api", AzurinoWeb do
     pipe_through [:api, AzurinoWeb.Plugs.ApiAuth]
 
