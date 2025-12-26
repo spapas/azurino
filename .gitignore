@@ -33,3 +33,4 @@ config/local.exs
 *.pyc
 manual_test*.txt
 db.sqlite3
+.env
