@@ -1,20 +1,20 @@
 <Layouts.app flash={@flash} current_scope={@current_scope}>
   <.header>Azure File Browser</.header>
-  <.link class="underline" href={~p"/azure"}>
+  <.link class="underline" href={~p"/azure/#{@conn.params["bucket"] || "default"}"}>
     <.icon name="hero-home" class="text-gray-700 dark:text-gray-300" />
   </.link>
-  
+
   <h3 class="mt-4 text-lg font-semibold">Upload file to this folder</h3>
-  <form action={~p"/azure/upload"} method="post" enctype="multipart/form-data" class="mt-4 p-4 rounded max-w-md" style="padding: 1rem; border-radius: 0.25rem; max-width: 28rem; border: 1px solid #374151;">
+  <form action={~p"/azure/#{@conn.params["bucket"] || "default"}/upload"} method="post" enctype="multipart/form-data" class="mt-4 p-4 rounded max-w-md" style="padding: 1rem; border-radius: 0.25rem; max-width: 28rem; border: 1px solid #374151;">
     <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
     <input type="hidden" name="path" value={@conn.params["path"] || ""} />
     <div class="form-control w-full">
       <label class="label">
         <span class="label-text" style="font-size: 0.875rem;">Choose a file</span>
       </label>
-      <input 
-        type="file" 
-        name="file" 
+      <input
+        type="file"
+        name="file"
         required
         class="file-input file-input-bordered w-full"
         style="width: 100%; padding: 0.5rem; border: 1px solid #4b5563; border-radius: 0.375rem; font-size: 0.875rem;"
@@ -30,7 +30,7 @@
   <ul>
   <%= for folder <- @folders do %>
     <li>
-      <.link class="underline" href={~p"/azure?path=#{folder}"}>{folder}</.link>
+      <.link class="underline" href={~p"/azure/#{@conn.params["bucket"] || "default"}?path=#{folder}"}>{folder}</.link>
     </li>
   <% end %>
   </ul>
@@ -39,15 +39,15 @@
   <%= for file <- @files do %>
     <li>
     {file}
-    <.link href={~p"/azure/metadata/?path=#{file}"}>
+    <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/metadata/?path=#{file}"}>
       <.icon name="hero-information-circle" class="text-gray-700 dark:text-gray-300" />
     </.link>
 
-    <.link href={~p"/azure/download/?path=#{file}"}>
+    <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download/?path=#{file}"}>
       <.icon name="hero-arrow-down-on-square" class="text-gray-700 dark:text-gray-300" />
     </.link>
 
-    <.link href={~p"/azure/download_signed/?#{Azurino.SignedURL.sign(path: file)}"}>
+    <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download_signed/?#{Azurino.SignedURL.sign(path: file, metadata: %{"bucket" => (@conn.params["bucket"] || "default")})}"}>
       <.icon name="hero-key" class="text-gray-700 dark:text-gray-300" />
     </.link>
 
@@ -139,7 +139,8 @@
         // Create and submit a form so the browser sends cookies/session and CSRF token
         const form = document.createElement('form');
         form.method = 'post';
-        form.action = '/azure/delete';
+        const bucket = "<%= @conn.params["bucket"] || "default" %>";
+        form.action = `/azure/${bucket}/delete`;
 
         const methodInput = document.createElement('input');
         methodInput.type = 'hidden'; methodInput.name = '_method'; methodInput.value = 'delete';

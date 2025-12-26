@@ -5,18 +5,27 @@ defmodule Azurino.Azure do
   @default_timeout 30_000
   @stream_timeout 5_000
 
-  defp get_sas_url do
-    Application.get_env(:azurino, :sas_url)
+  defp get_sas_url(bucket_name) do
+    case Application.get_env(:azurino, :buckets) do
+      nil ->
+        Logger.error("Azurino :buckets configuration is missing.")
+        nil
+      buckets_map when is_map(buckets_map) ->
+        Map.get(buckets_map, bucket_name)
+      _ ->
+        Logger.error("Azurino :buckets configuration is not a map.")
+        nil
+    end
   end
 
-  def sas_url, do: get_sas_url()
+  def sas_url(bucket_name \\ "default"), do: get_sas_url(bucket_name)
 
-  def list_container(_container_sas_url \\ nil) do
-    Azurino.BlobCache.list_container()
+  def list_container(bucket_name \\ "default") do
+    Azurino.BlobCache.list_container(bucket_name)
   end
 
-  def list_container_no_cache(container_sas_url \\ nil) do
-    sas_url = container_sas_url || get_sas_url()
+  def list_container_no_cache(bucket_name \\ "default") do
+    sas_url = get_sas_url(bucket_name)
 
     list_url =
       if String.contains?(sas_url, "?") do
@@ -31,9 +40,9 @@ defmodule Azurino.Azure do
     handle_response(resp, &parse_blob_list/1)
   end
 
-  def list_folder(folder_path \\ "", container_sas_url \\ nil)
+  def list_folder(folder_path \\ "", bucket_name \\ "default")
       when is_binary(folder_path) do
-    sas_url = container_sas_url || get_sas_url()
+    sas_url = get_sas_url(bucket_name)
 
     # If no SAS/container URL is configured, return empty listing instead of failing
     if is_nil(sas_url) or sas_url == "" do
@@ -76,9 +85,9 @@ defmodule Azurino.Azure do
     end
   end
 
-  def upload(container_sas_url, remote_folder, local_file_path, original_filename \\ nil)
+    def upload(bucket_name \\ "default", remote_folder, local_file_path, original_filename \\ nil)
       when is_binary(remote_folder) and is_binary(local_file_path) do
-    sas_url = container_sas_url || get_sas_url()
+    sas_url = get_sas_url(bucket_name)
 
     # Read the file
     case File.read(local_file_path) do
@@ -92,13 +101,13 @@ defmodule Azurino.Azure do
           if remote_folder in ["", "/"], do: "", else: String.trim_trailing(remote_folder, "/")
 
         # Ensure unique filename if file already exists in container/folder
-        unique_filename = make_unique_filename(sas_url, folder, filename)
+          unique_filename = make_unique_filename(bucket_name, folder, filename)
 
         # Build blob path (remote_folder/filename)
         blob_path = if folder == "", do: unique_filename, else: "#{folder}/#{unique_filename}"
 
         # Build upload URL
-        upload_url = build_blob_url(sas_url, blob_path)
+          upload_url = build_blob_url(sas_url, blob_path)
 
         # Upload the file
         headers = [
@@ -136,31 +145,31 @@ defmodule Azurino.Azure do
   # Public wrapper to make testing easier. Returns the filename to use
   # If `exists_fun` is provided, it will be called as `exists_fun.(sas_url, blob_path)`
   # to determine whether a blob exists. Defaults to internal `exists_in_container?/2`.
-  def make_unique_filename(
-        sas_url,
-        folder,
-        filename,
-        exists_fun \\ &exists_in_container?/2,
-        max_attempts \\ 5
-      ) do
+    def make_unique_filename(
+          bucket_name \\ "default",
+          folder,
+          filename,
+          exists_fun \\ &exists_in_container?/2,
+          max_attempts \\ 5
+        ) do
     base = Path.rootname(filename)
     ext = Path.extname(filename)
 
-    try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, 0)
+    try_generate_unique(bucket_name, folder, base, ext, exists_fun, max_attempts, 0)
   end
 
-  defp try_generate_unique(_sas, folder, base, ext, _exists_fun, _max, _attempt)
+  defp try_generate_unique(_bucket_name, folder, base, ext, _exists_fun, _max, _attempt)
        when folder == nil do
     # fallback
     "#{base}#{ext}"
   end
 
-  defp try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, attempt)
+  defp try_generate_unique(bucket_name, folder, base, ext, exists_fun, max_attempts, attempt)
        when attempt == 0 do
     candidate = "#{base}#{ext}"
     blob_path = if(folder == "", do: candidate, else: "#{folder}/#{candidate}")
 
-    case exists_fun.(sas_url, blob_path) do
+    case exists_fun.(bucket_name, blob_path) do
       false ->
         candidate
 
@@ -169,27 +178,27 @@ defmodule Azurino.Azure do
           # single attempt only -> fallback to timestamp
           timestamp_fallback(base, ext)
         else
-          try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, 1)
+          try_generate_unique(bucket_name, folder, base, ext, exists_fun, max_attempts, 1)
         end
     end
   end
 
-  defp try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, attempt)
+  defp try_generate_unique(bucket_name, folder, base, ext, exists_fun, max_attempts, attempt)
        when attempt > 0 and attempt < max_attempts do
     rand = random_string(10)
     candidate = "#{base}.#{rand}#{ext}"
     blob_path = if(folder == "", do: candidate, else: "#{folder}/#{candidate}")
 
-    case exists_fun.(sas_url, blob_path) do
+    case exists_fun.(bucket_name, blob_path) do
       false ->
         candidate
 
       true ->
-        try_generate_unique(sas_url, folder, base, ext, exists_fun, max_attempts, attempt + 1)
+        try_generate_unique(bucket_name, folder, base, ext, exists_fun, max_attempts, attempt + 1)
     end
   end
 
-  defp try_generate_unique(_sas_url, _folder, base, ext, _exists_fun, _max_attempts, _attempt) do
+  defp try_generate_unique(_bucket_name, _folder, base, ext, _exists_fun, _max_attempts, _attempt) do
     # Exhausted attempts -> use timestamp fallback
     timestamp_fallback(base, ext)
   end
@@ -199,8 +208,8 @@ defmodule Azurino.Azure do
     "#{base}.#{ts}#{ext}"
   end
 
-  defp exists_in_container?(sas_url, blob_path) do
-    case get_blob_metadata(blob_path, sas_url) do
+  defp exists_in_container?(bucket_name, blob_path) do
+    case get_blob_metadata(blob_path, bucket_name) do
       {:ok, _} -> true
       {:error, :not_found} -> false
       _ -> false
@@ -216,10 +225,10 @@ defmodule Azurino.Azure do
   @doc """
   Deletes a blob from Azure storage.
   """
-  def delete(blob_path, container_sas_url \\ nil)
+  def delete(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
-    sas_url = container_sas_url || get_sas_url()
-    delete_url = build_blob_url(sas_url, blob_path)
+    sas_url = get_sas_url(bucket_name)
+      delete_url = build_blob_url(sas_url, blob_path)
 
     {usec, del_res} = :timer.tc(fn -> Req.delete(delete_url, receive_timeout: @default_timeout) end)
     del_ms = usec / 1000
@@ -243,10 +252,10 @@ defmodule Azurino.Azure do
   @doc """
   Downloads a blob and returns it as a binary.
   """
-  def download(blob_path, container_sas_url \\ nil)
+  def download(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
-    sas_url = container_sas_url || get_sas_url()
-    download_url = build_blob_url(sas_url, blob_path)
+    sas_url = get_sas_url(bucket_name)
+      download_url = build_blob_url(sas_url, blob_path)
 
     {usec, get_res} = :timer.tc(fn -> Req.get(download_url, receive_timeout: @default_timeout) end)
     get_ms = usec / 1000
@@ -271,10 +280,10 @@ defmodule Azurino.Azure do
   Downloads a blob as a stream that can be used in Phoenix responses.
   Returns a stream that yields chunks of data.
   """
-  def download_stream(blob_path, container_sas_url \\ nil)
+  def download_stream(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
-    sas_url = container_sas_url || get_sas_url()
-    download_url = build_blob_url(sas_url, blob_path)
+    sas_url = get_sas_url(bucket_name)
+      download_url = build_blob_url(sas_url, blob_path)
 
     # Req supports streaming via into: option
     Stream.resource(
@@ -311,10 +320,10 @@ defmodule Azurino.Azure do
   @doc """
   Gets metadata about a blob (size, content-type, etc.) without downloading it.
   """
-  def get_blob_metadata(blob_path, container_sas_url \\ nil)
+  def get_blob_metadata(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
-    sas_url = container_sas_url || get_sas_url()
-    download_url = build_blob_url(sas_url, blob_path)
+    sas_url = get_sas_url(bucket_name)
+      download_url = build_blob_url(sas_url, blob_path)
 
     {usec, head_res} = :timer.tc(fn -> Req.head(download_url, receive_timeout: @default_timeout) end)
     head_ms = usec / 1000
@@ -361,9 +370,9 @@ defmodule Azurino.Azure do
     end
   end
 
-  defp build_blob_url(container_sas_url, blob_path) do
+    defp build_blob_url(sas_url, blob_path) do
     # Parse the container URL to extract base URL and SAS token
-    case String.split(container_sas_url, "?", parts: 2) do
+      case String.split(sas_url, "?", parts: 2) do
       [base_url, sas_token] ->
         # Ensure base_url ends with /
         base = String.trim_trailing(base_url, "/")

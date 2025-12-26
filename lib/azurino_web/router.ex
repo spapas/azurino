@@ -23,7 +23,7 @@ defmodule AzurinoWeb.Router do
     pipe_through :api
 
     # Signed URL download - authenticated via signature in URL params
-    get "/download-signed", Api.AzureController, :download_signed
+    get "/azure/:bucket/download-signed", Api.AzureController, :download_signed
   end
 
   scope "/api", AzurinoWeb do
@@ -33,13 +33,15 @@ defmodule AzurinoWeb.Router do
     get "/health/:id", Api.AzureController, :show
 
     # Storage endpoints
-    post "/upload", Api.AzureController, :upload
-    get "/download/:filename", Api.AzureController, :download
-    get "/download-stream/:filename", Api.AzureController, :download_stream
-    delete "/delete/:filename", Api.AzureController, :delete
-    get "/exists/:filename", Api.AzureController, :exists
-    get "/info/:filename", Api.AzureController, :info
-    get "/list", Api.AzureController, :list
+    scope "/azure/:bucket" do
+      post "/upload", Api.AzureController, :upload
+      get "/download/:filename", Api.AzureController, :download
+      get "/download-stream/:filename", Api.AzureController, :download_stream
+      delete "/delete/:filename", Api.AzureController, :delete
+      get "/exists/:filename", Api.AzureController, :exists
+      get "/info/:filename", Api.AzureController, :info
+      get "/list", Api.AzureController, :list
+    end
   end
 
   scope "/", AzurinoWeb do
@@ -51,12 +53,14 @@ defmodule AzurinoWeb.Router do
   scope "/", AzurinoWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    get "/azure", AzurePageController, :index
-    post "/azure/upload", AzurePageController, :upload
-    get "/azure/metadata/", AzurePageController, :metadata
-    get "/azure/download/", AzurePageController, :download
-    get "/azure/download_signed/", AzurePageController, :download_signed
-    delete "/azure/delete", AzurePageController, :delete
+    scope "/azure/:bucket" do
+      get "/", AzurePageController, :index
+      post "/upload", AzurePageController, :upload
+      get "/metadata/", AzurePageController, :metadata
+      get "/download/", AzurePageController, :download
+      get "/download_signed/", AzurePageController, :download_signed
+      delete "/delete", AzurePageController, :delete
+    end
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

@@ -12,16 +12,18 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Upload file to Azure Blob Storage
-  def upload(conn, %{"file" => file, "folder" => folder}) do
+  def upload(conn, %{"file" => file, "folder" => folder} = params) do
     # file is a Plug.Upload struct with fields: path, filename, content_type
     storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+    bucket = Map.get(params, "bucket", "default")
 
-    case storage.upload(nil, folder, file.path, file.filename) do
+    case storage.upload(bucket, folder, file.path, file.filename) do
       {:ok, blob_path} ->
         # Generate signed URL instead of exposing SAS URL
         signed_params = SignedURL.sign(
           path: blob_path,
-          expires_in: 3600
+          expires_in: 3600,
+          metadata: %{"bucket" => bucket}
         )
 
         json(conn, %{
@@ -40,16 +42,18 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Upload without folder parameter (defaults to root)
-  def upload(conn, %{"file" => file}) do
-    upload(conn, %{"file" => file, "folder" => ""})
+  def upload(conn, %{"file" => _file} = params) do
+    upload(conn, Map.merge(params, %{"folder" => ""}))
   end
 
   # Generate signed URL for downloading (returns signed URL parameters)
-  def download(conn, %{"filename" => filename}) do
+  def download(conn, %{"filename" => filename} = params) do
+    bucket = Map.get(params, "bucket", "default")
     # Generate signed URL instead of exposing SAS URL
     signed_params = SignedURL.sign(
       path: filename,
-      expires_in: 3600
+      expires_in: 3600,
+      metadata: %{"bucket" => bucket}
     )
 
     json(conn, %{
@@ -63,10 +67,11 @@ defmodule AzurinoWeb.Api.AzureController do
   def download_signed(conn, params) do
     storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
 
-    case SignedURL.verify(params) do
-      {:ok, path} ->
+    case SignedURL.verify(params, nil, extract_metadata: true) do
+      {:ok, {path, metadata}} ->
+        bucket = Map.get(metadata, "bucket", Map.get(params, "bucket", "default"))
         # Signature is valid, first get metadata for caching headers
-        case storage.get_blob_metadata(path) do
+        case storage.get_blob_metadata(path, bucket) do
           {:ok, metadata} ->
             # Check if client has current version via If-None-Match (ETag) or If-Modified-Since
             client_etag = get_req_header(conn, "if-none-match") |> List.first()
@@ -93,7 +98,7 @@ defmodule AzurinoWeb.Api.AzureController do
 
               true ->
                 # Client doesn't have current version, download and send file
-                case storage.download(path) do
+                case storage.download(path, bucket) do
                   {:ok, binary} ->
                     filename = Path.basename(path)
                     content_type = metadata.content_type || "application/octet-stream"
@@ -147,8 +152,9 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Stream file download directly through Phoenix
-  def download_stream(conn, %{"filename" => filename}) do
-    case Azure.download(filename) do
+  def download_stream(conn, %{"filename" => filename} = params) do
+    bucket = Map.get(params, "bucket", "default")
+    case Azure.download(filename, bucket) do
       {:ok, binary} ->
         conn
         |> put_resp_content_type("application/octet-stream")
@@ -168,8 +174,9 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Delete file from Azure storage
-  def delete(conn, %{"filename" => filename}) do
-    case Azure.delete(filename) do
+  def delete(conn, %{"filename" => filename} = params) do
+    bucket = Map.get(params, "bucket", "default")
+    case Azure.delete(filename, bucket) do
       {:ok, _blob_path} ->
         json(conn, %{status: "success", filename: filename, message: "File deleted"})
 
@@ -196,8 +203,9 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Check if file exists by attempting to get metadata
-  def exists(conn, %{"filename" => filename}) do
-    case Azure.get_blob_metadata(filename) do
+  def exists(conn, %{"filename" => filename} = params) do
+    bucket = Map.get(params, "bucket", "default")
+    case Azure.get_blob_metadata(filename, bucket) do
       {:ok, _metadata} ->
         json(conn, %{exists: true, filename: filename})
 
@@ -210,8 +218,9 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Get file info (size, metadata, etc.)
-  def info(conn, %{"filename" => filename}) do
-    case Azure.get_blob_metadata(filename) do
+  def info(conn, %{"filename" => filename} = params) do
+    bucket = Map.get(params, "bucket", "default")
+    case Azure.get_blob_metadata(filename, bucket) do
       {:ok, metadata} ->
         json(conn, %{
           filename: filename,
@@ -234,8 +243,9 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # List files in a folder
-  def list(conn, %{"folder" => folder}) do
-    case Azure.list_folder(folder) do
+  def list(conn, %{"folder" => folder} = params) do
+    bucket = Map.get(params, "bucket", "default")
+    case Azure.list_folder(folder, bucket) do
       {:ok, %{files: files, folders: folders}} ->
         json(conn, %{
           status: "success",
@@ -251,7 +261,8 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # List root folder
-  def list(conn, _params) do
-    list(conn, %{"folder" => ""})
+  def list(conn, params) do
+    folder = Map.get(params, "folder", "")
+    list(conn, %{"folder" => folder} |> Map.merge(%{"bucket" => Map.get(params, "bucket", "default")}))
   end
 end

@@ -1,7 +1,9 @@
 import Config
 
 
-config :azurino, sas_url: ""
+config :azurino, buckets: %{
+  "default" => "https://..."
+}
 
 # secret_key: Internal key used to sign and verify download URLs
 # - Never share this key with external apps

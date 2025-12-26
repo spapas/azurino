@@ -22,7 +22,10 @@ config :azurino, :scopes,
 
 config :azurino,
   ecto_repos: [Azurino.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  buckets: %{
+    "default" => "YOUR_DEFAULT_SAS_URL_HERE"
+  }
 
 # Configures the endpoint
 config :azurino, AzurinoWeb.Endpoint,

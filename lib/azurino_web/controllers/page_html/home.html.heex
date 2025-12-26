@@ -8,12 +8,20 @@
     <div class="mt-10 flex flex-col items-center gap-4">
       <%= if @current_scope do %>
         <p class="text-lg">Hello, <%= @current_scope.user.email %>!</p>
-        <.link
-          href={~p"/azure"}
-          class="btn btn-primary btn-lg"
-        >
-          Continue to File Browser
-        </.link>
+        <div class="mt-6 w-full max-w-md text-left">
+          <h3 class="text-base font-semibold mb-2">Available Buckets</h3>
+          <ul class="space-y-2">
+            <% buckets = Application.get_env(:azurino, :buckets) || %{} %>
+            <%= for {bucket, _url} <- buckets do %>
+              <li>
+                <.link href={~p"/azure/#{bucket}"} class="underline">
+                  <.icon name="hero-server-stack" class="w-4 h-4 inline-block mr-1" />
+                  <span><%= bucket %></span>
+                </.link>
+              </li>
+            <% end %>
+          </ul>
+        </div>
         <.link
           href={~p"/users/log-out"}
           method="delete"
