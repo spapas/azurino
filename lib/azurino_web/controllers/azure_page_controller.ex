@@ -13,6 +13,7 @@ defmodule AzurinoWeb.AzurePageController do
 
   def metadata(conn, %{"path" => path} = params) do
     bucket = Map.get(params, "bucket", conn.params["bucket"] || "default")
+
     case Azurino.Azure.get_blob_metadata(path, bucket) do
       {:ok, metadata} ->
         json(conn, metadata)
@@ -26,6 +27,7 @@ defmodule AzurinoWeb.AzurePageController do
 
   def download(conn, %{"path" => path} = params) do
     bucket = Map.get(params, "bucket", conn.params["bucket"] || "default")
+
     case Azurino.Azure.download(path, bucket) do
       {:ok, body} ->
         send_download(conn, {:binary, body}, filename: Path.basename(path))
@@ -38,7 +40,8 @@ defmodule AzurinoWeb.AzurePageController do
   end
 
   def download_signed(conn, signed_query) do
-    with {:ok, {path, meta}} <- Azurino.SignedURL.verify(signed_query, nil, extract_metadata: true),
+    with {:ok, {path, meta}} <-
+           Azurino.SignedURL.verify(signed_query, nil, extract_metadata: true),
          bucket <- Map.get(meta, "bucket", conn.params["bucket"] || "default"),
          {:ok, body} <- Azurino.Azure.download(path, bucket) do
       send_download(conn, {:binary, body}, filename: Path.basename(path))

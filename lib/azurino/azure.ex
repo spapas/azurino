@@ -10,8 +10,10 @@ defmodule Azurino.Azure do
       nil ->
         Logger.error("Azurino :buckets configuration is missing.")
         nil
+
       buckets_map when is_map(buckets_map) ->
         Map.get(buckets_map, bucket_name)
+
       _ ->
         Logger.error("Azurino :buckets configuration is not a map.")
         nil
@@ -80,12 +82,16 @@ defmodule Azurino.Azure do
 
       {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
       ms = usec / 1000
-      Logger.info("Azure list_folder: folder=#{normalized_folder} url=#{list_url} elapsed_ms=#{ms}")
+
+      Logger.info(
+        "Azure list_folder: folder=#{normalized_folder} url=#{list_url} elapsed_ms=#{ms}"
+      )
+
       handle_response(resp, &parse_blob_list/1)
     end
   end
 
-    def upload(bucket_name \\ "default", remote_folder, local_file_path, original_filename \\ nil)
+  def upload(bucket_name \\ "default", remote_folder, local_file_path, original_filename \\ nil)
       when is_binary(remote_folder) and is_binary(local_file_path) do
     sas_url = get_sas_url(bucket_name)
 
@@ -101,13 +107,13 @@ defmodule Azurino.Azure do
           if remote_folder in ["", "/"], do: "", else: String.trim_trailing(remote_folder, "/")
 
         # Ensure unique filename if file already exists in container/folder
-          unique_filename = make_unique_filename(bucket_name, folder, filename)
+        unique_filename = make_unique_filename(bucket_name, folder, filename)
 
         # Build blob path (remote_folder/filename)
         blob_path = if folder == "", do: unique_filename, else: "#{folder}/#{unique_filename}"
 
         # Build upload URL
-          upload_url = build_blob_url(sas_url, blob_path)
+        upload_url = build_blob_url(sas_url, blob_path)
 
         # Upload the file
         headers = [
@@ -115,15 +121,20 @@ defmodule Azurino.Azure do
           {"content-type", get_content_type(unique_filename)}
         ]
 
-        {usec, put_res} = :timer.tc(fn ->
-          Req.put(upload_url,
-            body: file_content,
-            headers: headers,
-            receive_timeout: @default_timeout
-          )
-        end)
+        {usec, put_res} =
+          :timer.tc(fn ->
+            Req.put(upload_url,
+              body: file_content,
+              headers: headers,
+              receive_timeout: @default_timeout
+            )
+          end)
+
         put_ms = usec / 1000
-        Logger.info("Azure upload: url=#{upload_url} filename=#{unique_filename} elapsed_ms=#{put_ms}")
+
+        Logger.info(
+          "Azure upload: url=#{upload_url} filename=#{unique_filename} elapsed_ms=#{put_ms}"
+        )
 
         case put_res do
           {:ok, %Req.Response{status: status}} when status in 200..299 ->
@@ -145,13 +156,13 @@ defmodule Azurino.Azure do
   # Public wrapper to make testing easier. Returns the filename to use
   # If `exists_fun` is provided, it will be called as `exists_fun.(sas_url, blob_path)`
   # to determine whether a blob exists. Defaults to internal `exists_in_container?/2`.
-    def make_unique_filename(
-          bucket_name \\ "default",
-          folder,
-          filename,
-          exists_fun \\ &exists_in_container?/2,
-          max_attempts \\ 5
-        ) do
+  def make_unique_filename(
+        bucket_name \\ "default",
+        folder,
+        filename,
+        exists_fun \\ &exists_in_container?/2,
+        max_attempts \\ 5
+      ) do
     base = Path.rootname(filename)
     ext = Path.extname(filename)
 
@@ -228,9 +239,11 @@ defmodule Azurino.Azure do
   def delete(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
     sas_url = get_sas_url(bucket_name)
-      delete_url = build_blob_url(sas_url, blob_path)
+    delete_url = build_blob_url(sas_url, blob_path)
 
-    {usec, del_res} = :timer.tc(fn -> Req.delete(delete_url, receive_timeout: @default_timeout) end)
+    {usec, del_res} =
+      :timer.tc(fn -> Req.delete(delete_url, receive_timeout: @default_timeout) end)
+
     del_ms = usec / 1000
     Logger.info("Azure delete: url=#{delete_url} elapsed_ms=#{del_ms}")
 
@@ -255,9 +268,11 @@ defmodule Azurino.Azure do
   def download(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
     sas_url = get_sas_url(bucket_name)
-      download_url = build_blob_url(sas_url, blob_path)
+    download_url = build_blob_url(sas_url, blob_path)
 
-    {usec, get_res} = :timer.tc(fn -> Req.get(download_url, receive_timeout: @default_timeout) end)
+    {usec, get_res} =
+      :timer.tc(fn -> Req.get(download_url, receive_timeout: @default_timeout) end)
+
     get_ms = usec / 1000
     Logger.info("Azure download: url=#{download_url} elapsed_ms=#{get_ms}")
 
@@ -283,7 +298,7 @@ defmodule Azurino.Azure do
   def download_stream(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
     sas_url = get_sas_url(bucket_name)
-      download_url = build_blob_url(sas_url, blob_path)
+    download_url = build_blob_url(sas_url, blob_path)
 
     # Req supports streaming via into: option
     Stream.resource(
@@ -291,7 +306,11 @@ defmodule Azurino.Azure do
       fn acc ->
         case acc do
           nil ->
-            {usec, stream_res} = :timer.tc(fn -> Req.get(download_url, into: :self, receive_timeout: @stream_timeout) end)
+            {usec, stream_res} =
+              :timer.tc(fn ->
+                Req.get(download_url, into: :self, receive_timeout: @stream_timeout)
+              end)
+
             stream_ms = usec / 1000
             Logger.info("Azure download_stream: url=#{download_url} elapsed_ms=#{stream_ms}")
 
@@ -323,9 +342,11 @@ defmodule Azurino.Azure do
   def get_blob_metadata(blob_path, bucket_name \\ "default")
       when is_binary(blob_path) do
     sas_url = get_sas_url(bucket_name)
-      download_url = build_blob_url(sas_url, blob_path)
+    download_url = build_blob_url(sas_url, blob_path)
 
-    {usec, head_res} = :timer.tc(fn -> Req.head(download_url, receive_timeout: @default_timeout) end)
+    {usec, head_res} =
+      :timer.tc(fn -> Req.head(download_url, receive_timeout: @default_timeout) end)
+
     head_ms = usec / 1000
     Logger.info("Azure head (metadata): url=#{download_url} elapsed_ms=#{head_ms}")
 
@@ -370,9 +391,9 @@ defmodule Azurino.Azure do
     end
   end
 
-    defp build_blob_url(sas_url, blob_path) do
+  defp build_blob_url(sas_url, blob_path) do
     # Parse the container URL to extract base URL and SAS token
-      case String.split(sas_url, "?", parts: 2) do
+    case String.split(sas_url, "?", parts: 2) do
       [base_url, sas_token] ->
         # Ensure base_url ends with /
         base = String.trim_trailing(base_url, "/")
@@ -412,12 +433,13 @@ defmodule Azurino.Azure do
           other -> other
         end
 
-      {usec, result} = :timer.tc(fn ->
-        {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
-        files = extract_blob_names(doc)
-        folders = extract_blob_prefix_names(doc)
-        {:ok, %{files: files, folders: folders}}
-      end)
+      {usec, result} =
+        :timer.tc(fn ->
+          {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
+          files = extract_blob_names(doc)
+          folders = extract_blob_prefix_names(doc)
+          {:ok, %{files: files, folders: folders}}
+        end)
 
       Logger.info("parse_blob_list elapsed_ms=#{usec / 1000}")
       result

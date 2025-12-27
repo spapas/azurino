@@ -20,7 +20,11 @@ defmodule AzurinoWeb.AzurePageControllerTest do
 
     upload = %Plug.Upload{path: tmp, filename: "sync-time.bat", content_type: "text/plain"}
 
-    conn = build_conn() |> init_test_session(%{}) |> Phoenix.Controller.fetch_flash()
+    conn =
+      build_conn()
+      |> init_test_session(%{})
+      |> Phoenix.Controller.fetch_flash()
+      |> Plug.Parsers.call(Plug.Parsers.init(parsers: []))
 
     conn = AzurePageController.upload(conn, %{"path" => "myfolder", "file" => upload})
 

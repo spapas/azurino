@@ -18,8 +18,7 @@ defmodule Azurino.BlobCache do
 
   @impl true
   def init(_) do
-    {:ok, %{}
-    }
+    {:ok, %{}}
   end
 
   @impl true

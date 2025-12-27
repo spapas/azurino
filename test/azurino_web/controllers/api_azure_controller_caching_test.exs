@@ -1,9 +1,6 @@
 defmodule AzurinoWeb.Api.AzureControllerCachingTest do
-  use ExUnit.Case, async: false
+  use AzurinoWeb.ConnCase, async: false
   import Plug.Conn
-  import Phoenix.ConnTest
-
-  @endpoint AzurinoWeb.Endpoint
 
   # Mock Azure module that doesn't require SAS URL
   defmodule MockAzure do
@@ -67,10 +64,13 @@ defmodule AzurinoWeb.Api.AzureControllerCachingTest do
           expires_in: 3600
         )
 
+      # Build query string manually
+      query_string = URI.encode_query(signed_params)
+
       # First request - should download file
       conn1 =
         build_conn()
-        |> get("/api/download-signed", signed_params)
+        |> get("/api/azure/default/download-signed?#{query_string}")
 
       assert conn1.status == 200
       assert get_resp_header(conn1, "etag") == ["\"abc123\""]
@@ -78,10 +78,12 @@ defmodule AzurinoWeb.Api.AzureControllerCachingTest do
       assert get_resp_header(conn1, "cache-control") == ["private, max-age=3600"]
 
       # Second request with matching ETag - should return 304
+      query_string = URI.encode_query(signed_params)
+
       conn2 =
         build_conn()
         |> put_req_header("if-none-match", "\"abc123\"")
-        |> get("/api/download-signed", signed_params)
+        |> get("/api/azure/default/download-signed?#{query_string}")
 
       assert conn2.status == 304
       assert get_resp_header(conn2, "etag") == ["\"abc123\""]
@@ -96,10 +98,12 @@ defmodule AzurinoWeb.Api.AzureControllerCachingTest do
         )
 
       # Request with matching Last-Modified - should return 304
+      query_string = URI.encode_query(signed_params)
+
       conn =
         build_conn()
         |> put_req_header("if-modified-since", "Mon, 24 Nov 2025 12:00:00 GMT")
-        |> get("/api/download-signed", signed_params)
+        |> get("/api/azure/default/download-signed?#{query_string}")
 
       assert conn.status == 304
       assert get_resp_header(conn, "last-modified") == ["Mon, 24 Nov 2025 12:00:00 GMT"]
@@ -114,10 +118,12 @@ defmodule AzurinoWeb.Api.AzureControllerCachingTest do
         )
 
       # Request with outdated ETag - should return 200 with new content
+      query_string = URI.encode_query(signed_params)
+
       conn =
         build_conn()
         |> put_req_header("if-none-match", "\"abc123\"")
-        |> get("/api/download-signed", signed_params)
+        |> get("/api/azure/default/download-signed?#{query_string}")
 
       assert conn.status == 200
       assert get_resp_header(conn, "etag") == ["\"xyz789\""]

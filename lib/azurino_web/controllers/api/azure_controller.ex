@@ -1,6 +1,5 @@
 defmodule AzurinoWeb.Api.AzureController do
   use AzurinoWeb, :controller
-  alias Azurino.Azure
   alias Azurino.SignedURL
 
   def index(conn, _params) do
@@ -20,11 +19,12 @@ defmodule AzurinoWeb.Api.AzureController do
     case storage.upload(bucket, folder, file.path, file.filename) do
       {:ok, blob_path} ->
         # Generate signed URL instead of exposing SAS URL
-        signed_params = SignedURL.sign(
-          path: blob_path,
-          expires_in: 3600,
-          metadata: %{"bucket" => bucket}
-        )
+        signed_params =
+          SignedURL.sign(
+            path: blob_path,
+            expires_in: 3600,
+            metadata: %{"bucket" => bucket}
+          )
 
         json(conn, %{
           status: "success",
@@ -50,11 +50,12 @@ defmodule AzurinoWeb.Api.AzureController do
   def download(conn, %{"filename" => filename} = params) do
     bucket = Map.get(params, "bucket", "default")
     # Generate signed URL instead of exposing SAS URL
-    signed_params = SignedURL.sign(
-      path: filename,
-      expires_in: 3600,
-      metadata: %{"bucket" => bucket}
-    )
+    signed_params =
+      SignedURL.sign(
+        path: filename,
+        expires_in: 3600,
+        metadata: %{"bucket" => bucket}
+      )
 
     json(conn, %{
       status: "success",
@@ -67,72 +68,68 @@ defmodule AzurinoWeb.Api.AzureController do
   def download_signed(conn, params) do
     storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
 
-    case SignedURL.verify(params, nil, extract_metadata: true) do
-      {:ok, {path, metadata}} ->
-        bucket = Map.get(metadata, "bucket", Map.get(params, "bucket", "default"))
-        # Signature is valid, first get metadata for caching headers
-        case storage.get_blob_metadata(path, bucket) do
-          {:ok, metadata} ->
-            # Check if client has current version via If-None-Match (ETag) or If-Modified-Since
-            client_etag = get_req_header(conn, "if-none-match") |> List.first()
-            client_modified = get_req_header(conn, "if-modified-since") |> List.first()
+    # Extract bucket from route params, then remove it from the verify params
+    # to avoid signature verification failures
+    bucket = Map.get(params, "bucket", "default")
+    verify_params = Map.drop(params, ["bucket"])
 
-            etag = metadata.etag
-            last_modified = metadata.last_modified
+    with {:ok, path_or_tuple} <- SignedURL.verify(verify_params, nil, extract_metadata: true),
+         {path, final_bucket} <- extract_path_and_bucket(path_or_tuple, bucket),
+         {:ok, metadata} <- storage.get_blob_metadata(path, final_bucket) do
+      # Check if client has current version via If-None-Match (ETag) or If-Modified-Since
+      client_etag = get_req_header(conn, "if-none-match") |> List.first()
+      client_modified = get_req_header(conn, "if-modified-since") |> List.first()
 
-            # If client has current version, return 304 Not Modified
-            cond do
-              client_etag && client_etag == etag ->
-                conn
-                |> put_resp_header("etag", etag)
-                |> put_resp_header("last-modified", last_modified || "")
-                |> put_resp_header("cache-control", "private, max-age=3600")
-                |> send_resp(304, "")
+      etag = metadata.etag
+      last_modified = metadata.last_modified
 
-              client_modified && client_modified == last_modified ->
-                conn
-                |> put_resp_header("etag", etag || "")
-                |> put_resp_header("last-modified", last_modified)
-                |> put_resp_header("cache-control", "private, max-age=3600")
-                |> send_resp(304, "")
+      # If client has current version, return 304 Not Modified
+      cond do
+        client_etag && client_etag == etag ->
+          conn
+          |> put_resp_header("etag", etag)
+          |> put_resp_header("last-modified", last_modified || "")
+          |> put_resp_header("cache-control", "private, max-age=3600")
+          |> send_resp(304, "")
 
-              true ->
-                # Client doesn't have current version, download and send file
-                case storage.download(path, bucket) do
-                  {:ok, binary} ->
-                    filename = Path.basename(path)
-                    content_type = metadata.content_type || "application/octet-stream"
+        client_modified && client_modified == last_modified ->
+          conn
+          |> put_resp_header("etag", etag || "")
+          |> put_resp_header("last-modified", last_modified)
+          |> put_resp_header("cache-control", "private, max-age=3600")
+          |> send_resp(304, "")
 
-                    conn
-                    |> put_resp_content_type(content_type)
-                    |> put_resp_header("content-disposition", "attachment; filename=\"#{filename}\"")
-                    |> put_resp_header("etag", etag || "")
-                    |> put_resp_header("last-modified", last_modified || "")
-                    |> put_resp_header("cache-control", "private, max-age=3600")
-                    |> send_resp(200, binary)
+        true ->
+          # Client doesn't have current version, download and send file
+          case storage.download(path, final_bucket) do
+            {:ok, binary} ->
+              filename = Path.basename(path)
+              content_type = metadata.content_type || "application/octet-stream"
 
-                  {:error, :not_found} ->
-                    conn
-                    |> put_status(:not_found)
-                    |> json(%{status: "error", message: "File not found"})
+              conn
+              |> put_resp_content_type(content_type)
+              |> put_resp_header("content-disposition", "attachment; filename=\"#{filename}\"")
+              |> put_resp_header("etag", etag || "")
+              |> put_resp_header("last-modified", last_modified || "")
+              |> put_resp_header("cache-control", "private, max-age=3600")
+              |> send_resp(200, binary)
 
-                  {:error, reason} ->
-                    conn
-                    |> put_status(:internal_server_error)
-                    |> json(%{status: "error", message: inspect(reason)})
-                end
-            end
+            {:error, :not_found} ->
+              conn
+              |> put_status(:not_found)
+              |> json(%{status: "error", message: "File not found"})
 
-          {:error, :not_found} ->
-            conn
-            |> put_status(:not_found)
-            |> json(%{status: "error", message: "File not found"})
-
-          {:error, reason} ->
-            conn
-            |> put_status(:internal_server_error)
-            |> json(%{status: "error", message: inspect(reason)})
-        end
+            {:error, reason} ->
+              conn
+              |> put_status(:internal_server_error)
+              |> json(%{status: "error", message: inspect(reason)})
+          end
+      end
+    else
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{status: "error", message: "File not found"})
 
       {:error, :expired} ->
         conn
@@ -148,13 +145,31 @@ defmodule AzurinoWeb.Api.AzureController do
         conn
         |> put_status(:bad_request)
         |> json(%{status: "error", message: "Missing required signature parameters"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", message: inspect(reason)})
     end
+  end
+
+  # Helper to extract path and bucket from SignedURL.verify response
+  # It can return either {:ok, path} or {:ok, {path, metadata}}
+  defp extract_path_and_bucket({path, metadata}, _bucket) do
+    final_bucket = Map.get(metadata, "bucket", Map.get(metadata, "default"))
+    {path, final_bucket}
+  end
+
+  defp extract_path_and_bucket(path, bucket) when is_binary(path) do
+    {path, bucket}
   end
 
   # Stream file download directly through Phoenix
   def download_stream(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
     bucket = Map.get(params, "bucket", "default")
-    case Azure.download(filename, bucket) do
+
+    case storage.download(filename, bucket) do
       {:ok, binary} ->
         conn
         |> put_resp_content_type("application/octet-stream")
@@ -175,8 +190,10 @@ defmodule AzurinoWeb.Api.AzureController do
 
   # Delete file from Azure storage
   def delete(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
     bucket = Map.get(params, "bucket", "default")
-    case Azure.delete(filename, bucket) do
+
+    case storage.delete(filename, bucket) do
       {:ok, _blob_path} ->
         json(conn, %{status: "success", filename: filename, message: "File deleted"})
 
@@ -204,8 +221,10 @@ defmodule AzurinoWeb.Api.AzureController do
 
   # Check if file exists by attempting to get metadata
   def exists(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
     bucket = Map.get(params, "bucket", "default")
-    case Azure.get_blob_metadata(filename, bucket) do
+
+    case storage.get_blob_metadata(filename, bucket) do
       {:ok, _metadata} ->
         json(conn, %{exists: true, filename: filename})
 
@@ -219,8 +238,10 @@ defmodule AzurinoWeb.Api.AzureController do
 
   # Get file info (size, metadata, etc.)
   def info(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
     bucket = Map.get(params, "bucket", "default")
-    case Azure.get_blob_metadata(filename, bucket) do
+
+    case storage.get_blob_metadata(filename, bucket) do
       {:ok, metadata} ->
         json(conn, %{
           filename: filename,
@@ -244,8 +265,10 @@ defmodule AzurinoWeb.Api.AzureController do
 
   # List files in a folder
   def list(conn, %{"folder" => folder} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
     bucket = Map.get(params, "bucket", "default")
-    case Azure.list_folder(folder, bucket) do
+
+    case storage.list_folder(folder, bucket) do
       {:ok, %{files: files, folders: folders}} ->
         json(conn, %{
           status: "success",
@@ -263,6 +286,10 @@ defmodule AzurinoWeb.Api.AzureController do
   # List root folder
   def list(conn, params) do
     folder = Map.get(params, "folder", "")
-    list(conn, %{"folder" => folder} |> Map.merge(%{"bucket" => Map.get(params, "bucket", "default")}))
+
+    list(
+      conn,
+      %{"folder" => folder} |> Map.merge(%{"bucket" => Map.get(params, "bucket", "default")})
+    )
   end
 end
