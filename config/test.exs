@@ -35,5 +35,8 @@ config :phoenix, :plug_init_mode, :runtime
 # Configure test secret key for signed URLs
 config :azurino, :secret_key, "test-secret-key-for-signed-urls"
 
-# Configure test API token
-config :azurino, :api_token, "test-api-token-123"
+# Configure test bucket-scoped tokens (preferred structure)
+config :azurino, :bucket_tokens, %{
+  "default" => ["test-api-token-123", "test-api-token-multi"],
+  "test01" => ["test-api-token-multi"]
+}

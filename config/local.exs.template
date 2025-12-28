@@ -12,10 +12,12 @@ config :azurino, buckets: %{
 
 config :azurino, secret_key: ""
 
-# api_token: Bearer token for external API authentication
-# - Share this with trusted external apps (e.g., Django backend)
+# bucket_tokens: Bucket-scoped Bearer tokens for external API authentication
+# - Provide a map where each bucket key lists the tokens allowed for that bucket
 # - Used in Authorization header: "Bearer <token>"
 # - Authenticates API calls to /api/upload, /api/list, etc.
-config :azurino, :api_token, ""
+config :azurino, :bucket_tokens, %{
+  "default" => [""]
+}
 
 IO.puts("Local config loaded")

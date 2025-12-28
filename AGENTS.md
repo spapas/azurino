@@ -50,6 +50,23 @@ Controllers automatically have the `current_scope` available if they use the `:b
 
 <!-- phoenix-gen-auth-end -->
 
+### API Authentication
+
+- Tokens are configured per bucket via `:bucket_tokens` (bucket => [tokens]).
+- Clients must send `Authorization: Bearer <token>` and specify a `bucket` (path or param).
+- A token is valid only for the buckets where it is listed; use `:all` (or "all") to allow any token for that bucket.
+- Example:
+
+      config :azurino, buckets: %{
+        "default" => "https://<account>.blob.core.windows.net/<container>?<sas>"
+      }
+
+      config :azurino, :bucket_tokens, %{
+        "default" => ["token-a", "token-b"],
+        "reports" => ["token-c"],
+        "private" => [:all]
+      }
+
 <!-- usage-rules-start -->
 
 <!-- phoenix:elixir-start -->

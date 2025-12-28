@@ -1,8 +1,66 @@
 defmodule AzurinoWeb.Api.AzureControllerTest do
   use ExUnit.Case, async: true
   import Phoenix.ConnTest
+  import Plug.Conn
 
   alias AzurinoWeb.Api.AzureController
+  alias AzurinoWeb.Plugs.ApiAuth
+
+  @default_token "token-default"
+
+  setup do
+    previous_tokens = Application.get_env(:azurino, :bucket_tokens)
+
+    Application.put_env(:azurino, :bucket_tokens, %{
+      "default" => [@default_token, "token-multi"],
+      "test01" => ["token-multi"]
+    })
+
+    on_exit(fn ->
+      if is_nil(previous_tokens) do
+        Application.delete_env(:azurino, :bucket_tokens)
+      else
+        Application.put_env(:azurino, :bucket_tokens, previous_tokens)
+      end
+    end)
+
+    :ok
+  end
+
+  describe "api auth plug" do
+    test "rejects missing token" do
+      conn =
+        build_conn()
+        |> Map.put(:path_params, %{"bucket" => "default"})
+        |> ApiAuth.call([])
+
+      assert conn.halted
+      assert conn.status == 401
+      assert %{"error" => "Missing Authorization header"} = Jason.decode!(conn.resp_body)
+    end
+
+    test "rejects token without bucket access" do
+      conn =
+        build_conn()
+        |> Map.put(:path_params, %{"bucket" => "private-bucket"})
+        |> put_req_header("authorization", "Bearer #{@default_token}")
+        |> ApiAuth.call([])
+
+      assert conn.halted
+      assert conn.status == 403
+      assert %{"error" => "Token not allowed for bucket"} = Jason.decode!(conn.resp_body)
+    end
+
+    test "allows token with bucket access" do
+      conn =
+        build_conn()
+        |> Map.put(:path_params, %{"bucket" => "test01"})
+        |> put_req_header("authorization", "Bearer token-multi")
+        |> ApiAuth.call([])
+
+      refute conn.halted
+    end
+  end
 
   test "upload returns blob url and path" do
     # Define a mock storage module for the test
@@ -14,11 +72,11 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
     Application.put_env(:azurino, :storage_module, mock)
 
-    conn = build_conn()
+    conn = authed_conn()
 
     upload = %Plug.Upload{path: "tmp/fake", filename: "sync-time.bat", content_type: "text/plain"}
 
-    conn = AzureController.upload(conn, %{"file" => upload, "folder" => "myfolder"})
+    conn = AzureController.upload(conn, %{"file" => upload, "folder" => "myfolder", "bucket" => "default"})
 
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
@@ -38,7 +96,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockDelete)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.delete(conn, %{"filename" => "test.txt", "bucket" => "default"})
 
       assert conn.status == 200
@@ -55,7 +113,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockDeleteNotFound)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.delete(conn, %{"filename" => "missing.txt", "bucket" => "default"})
 
       assert conn.status == 404
@@ -71,7 +129,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockDeleteHttpError)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.delete(conn, %{"filename" => "test.txt", "bucket" => "default"})
 
       assert conn.status == 500
@@ -96,7 +154,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockExists)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.exists(conn, %{"filename" => "test.txt", "bucket" => "default"})
 
       assert conn.status == 200
@@ -112,7 +170,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockExistsNotFound)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.exists(conn, %{"filename" => "missing.txt", "bucket" => "default"})
 
       assert conn.status == 200
@@ -128,7 +186,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockExistsError)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.exists(conn, %{"filename" => "test.txt", "bucket" => "default"})
 
       assert conn.status == 200
@@ -153,7 +211,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockInfo)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.info(conn, %{"filename" => "test.txt", "bucket" => "default"})
 
       assert conn.status == 200
@@ -172,7 +230,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockInfoNotFound)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.info(conn, %{"filename" => "missing.txt", "bucket" => "default"})
 
       assert conn.status == 404
@@ -188,7 +246,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockInfoError)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.info(conn, %{"filename" => "test.txt", "bucket" => "default"})
 
       assert conn.status == 500
@@ -217,7 +275,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockListSuccess)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.list(conn, %{"folder" => "myfolder", "bucket" => "default"})
 
       assert conn.status == 200
@@ -238,7 +296,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockListEmpty)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.list(conn, %{"folder" => "empty", "bucket" => "default"})
 
       assert conn.status == 200
@@ -255,7 +313,7 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockListError)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.list(conn, %{"folder" => "restricted", "bucket" => "default"})
 
       assert conn.status == 500
@@ -272,12 +330,19 @@ defmodule AzurinoWeb.Api.AzureControllerTest do
 
       Application.put_env(:azurino, :storage_module, TestMockListDefault)
 
-      conn = build_conn()
+      conn = authed_conn()
       conn = AzureController.list(conn, %{"bucket" => "default"})
 
       assert conn.status == 200
       body = Jason.decode!(conn.resp_body)
       assert body["status"] == "success"
     end
+  end
+
+  defp authed_conn(bucket \\ "default", token \\ @default_token) do
+    build_conn()
+    |> Map.put(:path_params, %{"bucket" => bucket})
+    |> put_req_header("authorization", "Bearer " <> token)
+    |> ApiAuth.call([])
   end
 end

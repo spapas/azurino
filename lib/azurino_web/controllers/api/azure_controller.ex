@@ -1,4 +1,13 @@
 defmodule AzurinoWeb.Api.AzureController do
+  @moduledoc """
+  API endpoints for Azure Blob operations.
+
+  Authentication
+  - Endpoints are intended to run behind `AzurinoWeb.Plugs.ApiAuth`.
+  - Clients must send `Authorization: Bearer <token>` and provide `bucket` via path/params.
+  - See `AzurinoWeb.Plugs.ApiAuth` for configuration via `:bucket_tokens`.
+  """
+
   use AzurinoWeb, :controller
   alias Azurino.SignedURL
 
