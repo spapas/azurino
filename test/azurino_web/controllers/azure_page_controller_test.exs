@@ -1,5 +1,5 @@
 defmodule AzurinoWeb.AzurePageControllerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Phoenix.ConnTest
 
   alias AzurinoWeb.AzurePageController

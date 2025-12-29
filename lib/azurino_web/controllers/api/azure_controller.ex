@@ -9,6 +9,7 @@ defmodule AzurinoWeb.Api.AzureController do
   """
 
   use AzurinoWeb, :controller
+
   alias Azurino.SignedURL
 
   def index(conn, _params) do
@@ -17,6 +18,129 @@ defmodule AzurinoWeb.Api.AzureController do
 
   def show(conn, %{"id" => id}) do
     json(conn, %{id: id, status: "healthy"})
+  end
+
+  # Check if file exists by attempting to get metadata
+  def exists(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+    bucket = Map.get(params, "bucket", "default")
+
+    case storage.get_blob_metadata(filename, bucket) do
+      {:ok, _metadata} ->
+        json(conn, %{exists: true, filename: filename})
+
+      {:error, :not_found} ->
+        json(conn, %{exists: false, filename: filename})
+
+      {:error, _reason} ->
+        json(conn, %{exists: false, filename: filename})
+    end
+  end
+
+  # Get file info (size, metadata, etc.)
+  def info(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+    bucket = Map.get(params, "bucket", "default")
+
+    case storage.get_blob_metadata(filename, bucket) do
+      {:ok, metadata} ->
+        json(conn, %{
+          filename: filename,
+          size: metadata.content_length,
+          content_type: metadata.content_type,
+          last_modified: metadata.last_modified,
+          etag: metadata.etag
+        })
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{status: "error", message: "File not found"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", message: inspect(reason)})
+    end
+  end
+
+  # Delete file from Azure storage
+  def delete(conn, %{"filename" => filename} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+    bucket = Map.get(params, "bucket", "default")
+
+    case storage.delete(filename, bucket) do
+      {:ok, _blob_path} ->
+        json(conn, %{status: "success", filename: filename, message: "File deleted"})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{status: "error", message: "File not found"})
+
+      {:error, {:http_error, status, body}} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", message: "HTTP error", code: status, body: inspect(body)})
+
+      {:error, {:request_failed, reason}} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", message: inspect(reason)})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", message: inspect(reason)})
+    end
+  end
+
+  # Generate signed URL for downloading (returns signed URL parameters)
+  def download(conn, %{"filename" => filename} = params) do
+    bucket = Map.get(params, "bucket", "default")
+    # Generate signed URL instead of exposing SAS URL
+    signed_params =
+      SignedURL.sign(
+        path: filename,
+        expires_in: 3600,
+        metadata: %{"bucket" => bucket}
+      )
+
+    json(conn, %{
+      status: "success",
+      signed_url: signed_params,
+      filename: filename
+    })
+  end
+
+  # List files in a folder
+  def list(conn, %{"folder" => folder} = params) do
+    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
+    bucket = Map.get(params, "bucket", "default")
+
+    case storage.list_folder(folder, bucket) do
+      {:ok, %{files: files, folders: folders}} ->
+        json(conn, %{
+          status: "success",
+          files: files,
+          folders: folders
+        })
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", message: inspect(reason)})
+    end
+  end
+
+  # List root folder
+  def list(conn, params) do
+    folder = Map.get(params, "folder", "")
+
+    list(
+      conn,
+      %{"folder" => folder} |> Map.merge(%{"bucket" => Map.get(params, "bucket", "default")})
+    )
   end
 
   # Upload file to Azure Blob Storage
@@ -53,24 +177,6 @@ defmodule AzurinoWeb.Api.AzureController do
   # Upload without folder parameter (defaults to root)
   def upload(conn, %{"file" => _file} = params) do
     upload(conn, Map.merge(params, %{"folder" => ""}))
-  end
-
-  # Generate signed URL for downloading (returns signed URL parameters)
-  def download(conn, %{"filename" => filename} = params) do
-    bucket = Map.get(params, "bucket", "default")
-    # Generate signed URL instead of exposing SAS URL
-    signed_params =
-      SignedURL.sign(
-        path: filename,
-        expires_in: 3600,
-        metadata: %{"bucket" => bucket}
-      )
-
-    json(conn, %{
-      status: "success",
-      signed_url: signed_params,
-      filename: filename
-    })
   end
 
   # Download file using signed URL verification
@@ -195,110 +301,5 @@ defmodule AzurinoWeb.Api.AzureController do
         |> put_status(:internal_server_error)
         |> json(%{status: "error", message: inspect(reason)})
     end
-  end
-
-  # Delete file from Azure storage
-  def delete(conn, %{"filename" => filename} = params) do
-    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
-    bucket = Map.get(params, "bucket", "default")
-
-    case storage.delete(filename, bucket) do
-      {:ok, _blob_path} ->
-        json(conn, %{status: "success", filename: filename, message: "File deleted"})
-
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{status: "error", message: "File not found"})
-
-      {:error, {:http_error, status, body}} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{status: "error", message: "HTTP error", code: status, body: inspect(body)})
-
-      {:error, {:request_failed, reason}} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{status: "error", message: inspect(reason)})
-
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{status: "error", message: inspect(reason)})
-    end
-  end
-
-  # Check if file exists by attempting to get metadata
-  def exists(conn, %{"filename" => filename} = params) do
-    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
-    bucket = Map.get(params, "bucket", "default")
-
-    case storage.get_blob_metadata(filename, bucket) do
-      {:ok, _metadata} ->
-        json(conn, %{exists: true, filename: filename})
-
-      {:error, :not_found} ->
-        json(conn, %{exists: false, filename: filename})
-
-      {:error, _reason} ->
-        json(conn, %{exists: false, filename: filename})
-    end
-  end
-
-  # Get file info (size, metadata, etc.)
-  def info(conn, %{"filename" => filename} = params) do
-    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
-    bucket = Map.get(params, "bucket", "default")
-
-    case storage.get_blob_metadata(filename, bucket) do
-      {:ok, metadata} ->
-        json(conn, %{
-          filename: filename,
-          size: metadata.content_length,
-          content_type: metadata.content_type,
-          last_modified: metadata.last_modified,
-          etag: metadata.etag
-        })
-
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{status: "error", message: "File not found"})
-
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{status: "error", message: inspect(reason)})
-    end
-  end
-
-  # List files in a folder
-  def list(conn, %{"folder" => folder} = params) do
-    storage = Application.get_env(:azurino, :storage_module, Azurino.Azure)
-    bucket = Map.get(params, "bucket", "default")
-
-    case storage.list_folder(folder, bucket) do
-      {:ok, %{files: files, folders: folders}} ->
-        json(conn, %{
-          status: "success",
-          files: files,
-          folders: folders
-        })
-
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{status: "error", message: inspect(reason)})
-    end
-  end
-
-  # List root folder
-  def list(conn, params) do
-    folder = Map.get(params, "folder", "")
-
-    list(
-      conn,
-      %{"folder" => folder} |> Map.merge(%{"bucket" => Map.get(params, "bucket", "default")})
-    )
   end
 end

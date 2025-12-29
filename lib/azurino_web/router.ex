@@ -19,14 +19,14 @@ defmodule AzurinoWeb.Router do
   end
 
   # Public API endpoints (no auth required - authenticated via signed URLs or other means)
-  scope "/api", AzurinoWeb do
+  scope "/api" do
     pipe_through :api
 
-    get "/health", Api.AzureController, :index
-    get "/health/:id", Api.AzureController, :show
+    get "/health", AzurinoWeb.Api.AzureController, :index
+    get "/health/:id", AzurinoWeb.Api.AzureController, :show
 
     # Signed URL download - authenticated via signature in URL params
-    get "/azure/:bucket/download-signed", Api.AzureController, :download_signed
+    get "/azure/:bucket/download-signed", AzurinoWeb.Api.AzureController, :download_signed
   end
 
   scope "/api", AzurinoWeb do
