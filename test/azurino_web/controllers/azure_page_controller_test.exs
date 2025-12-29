@@ -10,9 +10,19 @@ defmodule AzurinoWeb.AzurePageControllerTest do
     defmodule mock do
       def upload(_sas, folder, _path, filename),
         do: {:ok, if(folder == "", do: filename, else: "#{folder}/#{filename}")}
+
+      def delete(_filename, _bucket), do: {:ok, "deleted"}
     end
 
+    previous_storage = Application.get_env(:azurino, :storage_module)
     Application.put_env(:azurino, :storage_module, mock)
+    on_exit(fn ->
+      if is_nil(previous_storage) do
+        Application.delete_env(:azurino, :storage_module)
+      else
+        Application.put_env(:azurino, :storage_module, previous_storage)
+      end
+    end)
 
     # create a temporary file to simulate upload
     tmp = Path.join(System.tmp_dir!(), "test_upload.txt")

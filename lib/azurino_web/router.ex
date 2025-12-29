@@ -22,6 +22,9 @@ defmodule AzurinoWeb.Router do
   scope "/api", AzurinoWeb do
     pipe_through :api
 
+    get "/health", Api.AzureController, :index
+    get "/health/:id", Api.AzureController, :show
+
     # Signed URL download - authenticated via signature in URL params
     get "/azure/:bucket/download-signed", Api.AzureController, :download_signed
   end
@@ -29,17 +32,14 @@ defmodule AzurinoWeb.Router do
   scope "/api", AzurinoWeb do
     pipe_through [:api, AzurinoWeb.Plugs.ApiAuth]
 
-    get "/health", Api.AzureController, :index
-    get "/health/:id", Api.AzureController, :show
-
     # Storage endpoints
     scope "/azure/:bucket" do
       post "/upload", Api.AzureController, :upload
-      get "/download/:filename", Api.AzureController, :download
-      get "/download-stream/:filename", Api.AzureController, :download_stream
-      delete "/delete/:filename", Api.AzureController, :delete
-      get "/exists/:filename", Api.AzureController, :exists
-      get "/info/:filename", Api.AzureController, :info
+      get "/download", Api.AzureController, :download
+      get "/download-stream", Api.AzureController, :download_stream
+      delete "/delete", Api.AzureController, :delete
+      get "/exists", Api.AzureController, :exists
+      get "/info", Api.AzureController, :info
       get "/list", Api.AzureController, :list
     end
   end
