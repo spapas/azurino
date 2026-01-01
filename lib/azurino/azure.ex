@@ -38,7 +38,7 @@ defmodule Azurino.Azure do
 
     {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
     ms = usec / 1000
-    Logger.info("Azure list_container_no_cache: url=#{list_url} elapsed_ms=#{ms}")
+    Logger.debug("Azure list_container_no_cache: url=#{list_url} elapsed_ms=#{ms}")
     handle_response(resp, &parse_blob_list/1)
   end
 
@@ -83,7 +83,7 @@ defmodule Azurino.Azure do
       {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
       ms = usec / 1000
 
-      Logger.info(
+      Logger.debug(
         "Azure list_folder: folder=#{normalized_folder} url=#{list_url} elapsed_ms=#{ms}"
       )
 
@@ -132,7 +132,7 @@ defmodule Azurino.Azure do
 
         put_ms = usec / 1000
 
-        Logger.info(
+        Logger.debug(
           "Azure upload: url=#{upload_url} filename=#{unique_filename} elapsed_ms=#{put_ms}"
         )
 
@@ -245,7 +245,7 @@ defmodule Azurino.Azure do
       :timer.tc(fn -> Req.delete(delete_url, receive_timeout: @default_timeout) end)
 
     del_ms = usec / 1000
-    Logger.info("Azure delete: url=#{delete_url} elapsed_ms=#{del_ms}")
+    Logger.debug("Azure delete: url=#{delete_url} elapsed_ms=#{del_ms}")
 
     case del_res do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
@@ -274,7 +274,7 @@ defmodule Azurino.Azure do
       :timer.tc(fn -> Req.get(download_url, receive_timeout: @default_timeout) end)
 
     get_ms = usec / 1000
-    Logger.info("Azure download: url=#{download_url} elapsed_ms=#{get_ms}")
+    Logger.debug("Azure download: url=#{download_url} elapsed_ms=#{get_ms}")
 
     case get_res do
       {:ok, %Req.Response{status: 200, body: body}} ->
@@ -348,7 +348,7 @@ defmodule Azurino.Azure do
       :timer.tc(fn -> Req.head(download_url, receive_timeout: @default_timeout) end)
 
     head_ms = usec / 1000
-    Logger.info("Azure head (metadata): url=#{download_url} elapsed_ms=#{head_ms}")
+    Logger.debug("Azure head (metadata): url=#{download_url} elapsed_ms=#{head_ms}")
 
     case head_res do
       {:ok, %Req.Response{status: 200, headers: headers}} ->

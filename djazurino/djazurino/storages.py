@@ -20,11 +20,14 @@ class AzureBlobStorage(Storage):
     Usage in settings.py:
         DEFAULT_FILE_STORAGE = 'path.to.AzureBlobStorage'
         AZURE_API_BASE_URL = 'http://127.0.0.1:4000/api/azure'
+        AZURE_STORAGE_BUCKET = 'default'  # Required, bucket name
         AZURE_STORAGE_FOLDER = 'uploads'  # Optional, default folder
+        AZURE_API_TOKEN = 'your-token'    # Required, API token
     """
     
-    def __init__(self, base_url=None, folder=None, api_token=None):
+    def __init__(self, base_url=None, bucket=None, folder=None, api_token=None):
         self.base_url = base_url or getattr(settings, 'AZURE_API_BASE_URL', 'http://127.0.0.1:4000/api/azure')
+        self.bucket = bucket or getattr(settings, 'AZURE_STORAGE_BUCKET', 'default')
         self.folder = folder or getattr(settings, 'AZURE_STORAGE_FOLDER', 'uploads')
         self.api_token = api_token or getattr(settings, 'AZURE_API_TOKEN', '123')
 
@@ -81,7 +84,7 @@ class AzureBlobStorage(Storage):
         Returns:
             The blob_path of the saved file
         """
-        url = f"{self.base_url}/upload"
+        url = f"{self.base_url}/{self.bucket}/upload"
         
         # Prepare multipart upload. Prefer passing a file-like object so
         # requests can stream it. Fall back to bytes if needed.
@@ -138,37 +141,80 @@ class AzureBlobStorage(Storage):
         Returns:
             Django File object with content
         """
-        # Use the stream endpoint to download file content
-        url = f"{self.base_url}/download-stream/{quote(name, safe='')}"
+        # First get the signed URL
+        signed_url_endpoint = f"{self.base_url}/{self.bucket}/download"
+        params = {'filename': name}
         
         start = time.monotonic()
         try:
-            response = self._session.get(url, headers=self._get_headers(), timeout=30)
+            response = self._session.get(signed_url_endpoint, params=params, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
-            logger.info("Download request: url=%s status=%s elapsed=%.3fs", url, response.status_code, elapsed)
+            logger.info("Signed URL request: url=%s status=%s elapsed=%.3fs", signed_url_endpoint, response.status_code, elapsed)
 
             if response.status_code == 404:
                 raise FileNotFoundError(f"File not found: {name}")
 
+            response.raise_for_status()
+            data = response.json()
+            signed_url_params = data.get('signed_url')
+            
+            if not signed_url_params:
+                raise Exception("No signed URL in response")
+            
+            logger.info("Received signed_url params: path=%s, signature=%s, expires=%s", 
+                       signed_url_params.get('path'), signed_url_params.get('signature'), signed_url_params.get('expires'))
+            
+            # Now download using the signed URL
+            # Note: bucket is already in the URL path (/azure/:bucket/download-signed)
+            # The signed_url_params may contain 'bucket' metadata, but we don't send it as a query param
+            download_url = f"{self.base_url}/{self.bucket}/download-signed"
+            download_params = {
+                'path': signed_url_params.get('path'),
+                'signature': signed_url_params.get('signature'),
+                'expires': signed_url_params.get('expires')
+            }
+            
+            # Add any other metadata from signed_url_params except bucket, path, signature, expires
+            for key, value in signed_url_params.items():
+                if key not in ['path', 'signature', 'expires', 'bucket']:
+                    download_params[key] = value
+            
+            start = time.monotonic()
+            # download-signed doesn't require Bearer token - explicitly pass empty headers
+            response = self._session.get(download_url, params=download_params, headers={}, timeout=30)
+            elapsed = time.monotonic() - start
+            logger.info("Download request: url=%s status=%s elapsed=%.3fs", download_url, response.status_code, elapsed)
+
+            if response.status_code == 404:
+                raise FileNotFoundError(f"File not found: {name}")
+
+            # Log error response if not successful
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    logger.error("Download-signed error response: %s", error_data)
+                except:
+                    logger.error("Download-signed error response (raw): %s", response.text)
+            
             response.raise_for_status()
 
             # Return a File object with the binary content
             return ContentFile(response.content, name=name)
         except requests.exceptions.RequestException as e:
             elapsed = time.monotonic() - start
-            logger.exception("Download request failed: url=%s elapsed=%.3fs error=%s", url, elapsed, e)
+            logger.exception("Download request failed: url=%s elapsed=%.3fs error=%s", download_url if 'download_url' in locals() else signed_url_endpoint, elapsed, e)
             raise Exception(f"Download failed: {str(e)}")
     
     def delete(self, name):
         """
         Delete file from Azure Blob Storage.
-        Note: Delete is not yet implemented in the Elixir API.
         """
-        url = f"{self.base_url}/delete/{quote(name, safe='')}"
+        url = f"{self.base_url}/{self.bucket}/delete"
+        params = {'filename': name}
         
         start = time.monotonic()
         try:
-            response = self._session.delete(url, headers=self._get_headers(), timeout=10)
+            response = self._session.delete(url, params=params, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
             logger.info("Delete request: url=%s status=%s elapsed=%.3fs", url, response.status_code, elapsed)
             
@@ -193,11 +239,12 @@ class AzureBlobStorage(Storage):
     
     def exists(self, name):
         """Check if file exists in Azure Blob Storage."""
-        url = f"{self.base_url}/exists/{quote(name, safe='')}"
+        url = f"{self.base_url}/{self.bucket}/exists"
+        params = {'filename': name}
         
         start = time.monotonic()
         try:
-            response = self._session.get(url, headers=self._get_headers(), timeout=10)
+            response = self._session.get(url, params=params, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
             logger.info("Exists request: url=%s status=%s elapsed=%.3fs", url, response.status_code, elapsed)
 
@@ -216,11 +263,12 @@ class AzureBlobStorage(Storage):
         Returns a URL that can be used to download the file through the signed URL endpoint.
         """
         # Get signed URL parameters from Phoenix API
-        api_url = f"{self.base_url}/download/{quote(name, safe='')}"
+        api_url = f"{self.base_url}/{self.bucket}/download"
+        params = {'filename': name}
         
         start = time.monotonic()
         try:
-            response = self._session.get(api_url, headers=self._get_headers(), timeout=10)
+            response = self._session.get(api_url, params=params, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
             logger.info("Signed URL request: url=%s status=%s elapsed=%.3fs", api_url, response.status_code, elapsed)
 
@@ -233,16 +281,16 @@ class AzureBlobStorage(Storage):
                     return None
                 
                 # Build the download-signed URL with query parameters
-                # Format: /api/download-signed?signature=...&expires=...&path=...
+                # Format: /api/azure/:bucket/download-signed?signature=...&expires=...&path=...
                 from urllib.parse import urlencode
                 query_string = urlencode({
+                    'path': signed_url_params.get('path'),
                     'signature': signed_url_params.get('signature'),
-                    'expires': signed_url_params.get('expires'),
-                    'path': signed_url_params.get('path')
+                    'expires': signed_url_params.get('expires')
                 })
                 
                 # Return the full URL to the download-signed endpoint
-                download_url = f"{self.base_url}/download-signed?{query_string}"
+                download_url = f"{self.base_url}/{self.bucket}/download-signed?{query_string}"
                 return download_url
             
             return None
@@ -253,11 +301,12 @@ class AzureBlobStorage(Storage):
     
     def size(self, name):
         """Get file size from blob metadata."""
-        url = f"{self.base_url}/info/{quote(name, safe='')}"
+        url = f"{self.base_url}/{self.bucket}/info"
+        params = {'filename': name}
         
         start = time.monotonic()
         try:
-            response = self._session.get(url, headers=self._get_headers(), timeout=10)
+            response = self._session.get(url, params=params, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
             logger.info("Size request: url=%s status=%s elapsed=%.3fs", url, response.status_code, elapsed)
 
@@ -276,11 +325,12 @@ class AzureBlobStorage(Storage):
     
     def get_created_time(self, name):  # type: ignore[override]
         """Get created/modified time from blob metadata."""
-        url = f"{self.base_url}/info/{quote(name, safe='')}"
+        url = f"{self.base_url}/{self.bucket}/info"
+        params = {'filename': name}
         
         start = time.monotonic()
         try:
-            response = self._session.get(url, headers=self._get_headers(), timeout=10)
+            response = self._session.get(url, params=params, headers=self._get_headers(), timeout=10)
             elapsed = time.monotonic() - start
             logger.info("Info request: url=%s status=%s elapsed=%.3fs", url, response.status_code, elapsed)
 
@@ -308,8 +358,16 @@ class AzureBlobStorage(Storage):
         Returns:
             Tuple of (directories, files)
         """
-        url = f"{self.base_url}/list"
-        params = {'folder': path} if path else {}
+        url = f"{self.base_url}/{self.bucket}/list"
+        
+        # If no path given, use the storage's configured folder
+        # Otherwise, combine the storage folder with the given path
+        if not path:
+            folder_path = self.folder
+        else:
+            folder_path = f"{self.folder}/{path}".strip('/')
+        
+        params = {'folder': folder_path} if folder_path else {}
         
         start = time.monotonic()
         try:
@@ -322,11 +380,11 @@ class AzureBlobStorage(Storage):
                 folders = data.get('folders', [])
                 files = data.get('files', [])
 
-                # Remove path prefix from results
-                if path:
-                    prefix = path.rstrip('/') + '/'
-                    folders = [f.replace(prefix, '').rstrip('/') for f in folders]
-                    files = [f.replace(prefix, '') for f in files]
+                # Remove folder prefix from results to return relative paths
+                if folder_path:
+                    prefix = folder_path.rstrip('/') + '/'
+                    folders = [f.replace(prefix, '').rstrip('/') for f in folders if f.startswith(prefix)]
+                    files = [f.replace(prefix, '') for f in files if f.startswith(prefix)]
 
                 return (folders, files)
             return ([], [])

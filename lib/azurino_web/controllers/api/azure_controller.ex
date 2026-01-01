@@ -96,14 +96,13 @@ defmodule AzurinoWeb.Api.AzureController do
   end
 
   # Generate signed URL for downloading (returns signed URL parameters)
-  def download(conn, %{"filename" => filename} = params) do
-    bucket = Map.get(params, "bucket", "default")
+  def download(conn, %{"filename" => filename}) do
     # Generate signed URL instead of exposing SAS URL
+    # Note: Don't include bucket in metadata since it's in the route path
     signed_params =
       SignedURL.sign(
         path: filename,
-        expires_in: 3600,
-        metadata: %{"bucket" => bucket}
+        expires_in: 3600
       )
 
     json(conn, %{
@@ -152,11 +151,11 @@ defmodule AzurinoWeb.Api.AzureController do
     case storage.upload(bucket, folder, file.path, file.filename) do
       {:ok, blob_path} ->
         # Generate signed URL instead of exposing SAS URL
+        # Note: Don't include bucket in metadata since it's in the route path
         signed_params =
           SignedURL.sign(
             path: blob_path,
-            expires_in: 3600,
-            metadata: %{"bucket" => bucket}
+            expires_in: 3600
           )
 
         json(conn, %{
