@@ -35,37 +35,128 @@
   <% end %>
   </ul>
 
-  <ul>
-  <%= for file <- @files do %>
-    <li>
-    {file}
-    <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/metadata/?path=#{file}"}>
-      <.icon name="hero-information-circle" class="text-gray-700 dark:text-gray-300" />
-    </.link>
+  <table class="w-full mt-4 text-xs border-collapse border border-gray-300 dark:border-gray-600" id="files-table">
+    <thead>
+      <tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-600">
+        <th class="px-2 py-1 text-left text-xs font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" data-sort="name">
+          Name <span class="sort-indicator"></span>
+        </th>
+        <th class="px-2 py-1 text-right text-xs font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" data-sort="size">
+          Size <span class="sort-indicator"></span>
+        </th>
+        <th class="px-2 py-1 text-left text-xs font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" data-sort="type">
+          Type <span class="sort-indicator"></span>
+        </th>
+        <th class="px-2 py-1 text-left text-xs font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" data-sort="date">
+          Date Modified <span class="sort-indicator"></span>
+        </th>
+        <th class="px-2 py-1 text-center text-xs font-semibold">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= for file <- @files do %>
+        <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-gray-700">
+          <td class="px-2 py-1" data-name={file.name}><%= file.name %></td>
+          <td class="px-2 py-1 text-right" data-size={file.content_length || 0}><%= format_bytes(file.content_length) %></td>
+          <td class="px-2 py-1" data-type={file.content_type || ""}><%= file.content_type || "" %></td>
+          <td class="px-2 py-1" data-date={file.last_modified || ""}><%= file.last_modified || "" %></td>
+          <td class="px-2 py-1">
+            <div class="flex justify-center gap-1">
+              <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/metadata/?path=#{file.name}"} title="View metadata">
+                <.icon name="hero-information-circle" class="text-gray-600 dark:text-gray-400 w-4 h-4" />
+              </.link>
 
-    <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download/?path=#{file}"}>
-      <.icon name="hero-arrow-down-on-square" class="text-gray-700 dark:text-gray-300" />
-    </.link>
+              <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download/?path=#{file.name}"} title="Download">
+                <.icon name="hero-arrow-down-on-square" class="text-gray-600 dark:text-gray-400 w-4 h-4" />
+              </.link>
 
-    <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download_signed/?#{Azurino.SignedURL.sign(path: file, metadata: %{"bucket" => (@conn.params["bucket"] || "default")})}"}>
-      <.icon name="hero-key" class="text-gray-700 dark:text-gray-300" />
-    </.link>
+              <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download_signed/?#{Azurino.SignedURL.sign(path: file.name, metadata: %{"bucket" => (@conn.params["bucket"] || "default")})}"} title="Download (signed)">
+                <.icon name="hero-key" class="text-gray-600 dark:text-gray-400 w-4 h-4" />
+              </.link>
 
-    <button
-      type="button"
-      class="ml-2 btn btn-sm text-red-600"
-      data-delete-path={file}
-      aria-label={"Delete " <> file}
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" style="width:16px;height:16px;display:inline-block;vertical-align:middle;color:inherit;" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M10 7h4" />
-      </svg>
-    </button>
+              <button
+                type="button"
+                class="text-red-600 hover:text-red-800"
+                data-delete-path={file.name}
+                aria-label={"Delete " <> file.name}
+                title="Delete"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" style="width:16px;height:16px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M10 7h4" />
+                </svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
 
-    </li>
+  <script>
+    // Table sorting functionality
+    (function() {
+      const table = document.getElementById('files-table');
+      if (!table) return;
 
-  <% end %>
-  </ul>
+      const tbody = table.querySelector('tbody');
+      const headers = table.querySelectorAll('th[data-sort]');
+      let currentSort = { column: null, direction: 'asc' };
+
+      headers.forEach(header => {
+        header.addEventListener('click', () => {
+          const sortType = header.getAttribute('data-sort');
+
+          // Toggle direction if clicking same column, otherwise default to ascending
+          if (currentSort.column === sortType) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            currentSort.column = sortType;
+            currentSort.direction = 'asc';
+          }
+
+          // Update sort indicators
+          headers.forEach(h => {
+            const indicator = h.querySelector('.sort-indicator');
+            indicator.textContent = '';
+          });
+          const indicator = header.querySelector('.sort-indicator');
+          indicator.textContent = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
+
+          // Sort rows
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          rows.sort((a, b) => {
+            let aVal, bVal;
+
+            switch(sortType) {
+              case 'name':
+                aVal = a.querySelector('[data-name]').getAttribute('data-name').toLowerCase();
+                bVal = b.querySelector('[data-name]').getAttribute('data-name').toLowerCase();
+                break;
+              case 'size':
+                aVal = parseInt(a.querySelector('[data-size]').getAttribute('data-size')) || 0;
+                bVal = parseInt(b.querySelector('[data-size]').getAttribute('data-size')) || 0;
+                break;
+              case 'type':
+                aVal = a.querySelector('[data-type]').getAttribute('data-type').toLowerCase();
+                bVal = b.querySelector('[data-type]').getAttribute('data-type').toLowerCase();
+                break;
+              case 'date':
+                aVal = a.querySelector('[data-date]').getAttribute('data-date');
+                bVal = b.querySelector('[data-date]').getAttribute('data-date');
+                break;
+            }
+
+            if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+            return 0;
+          });
+
+          // Re-append sorted rows
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    })();
+  </script>
 
   <!-- Delete confirmation modal (Tailwind + accessible) -->
   <div id="delete-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">

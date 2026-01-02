@@ -66,28 +66,54 @@ defmodule Azurino.Azure do
             end
         end
 
-      # Build URL - when prefix is empty, we still include it but with empty value
-      list_url =
-        if String.contains?(sas_url, "?") do
+      # Fetch all pages
+      list_folder_paginated(sas_url, normalized_folder, nil, [], [])
+    end
+  end
+
+  defp list_folder_paginated(sas_url, normalized_folder, marker, acc_files, acc_folders) do
+    # Build URL - when prefix is empty, we still include it but with empty value
+    list_url =
+      if String.contains?(sas_url, "?") do
+        base =
           sas_url <>
             "&restype=container&comp=list&prefix=" <>
             URI.encode(normalized_folder) <>
             "&delimiter=" <> URI.encode("/")
-        else
+
+        if marker, do: base <> "&marker=" <> URI.encode(marker), else: base
+      else
+        base =
           sas_url <>
             "?restype=container&comp=list&prefix=" <>
             URI.encode(normalized_folder) <>
             "&delimiter=" <> URI.encode("/")
+
+        if marker, do: base <> "&marker=" <> URI.encode(marker), else: base
+      end
+
+    {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
+    ms = usec / 1000
+
+    Logger.debug(
+      "Azure list_folder: folder=#{normalized_folder} marker=#{inspect(marker)} url=#{list_url} elapsed_ms=#{ms}"
+    )
+
+    case handle_response(resp, &parse_blob_list/1) do
+      {:ok, %{files: files, folders: folders, next_marker: next_marker}} ->
+        new_acc_files = acc_files ++ files
+        new_acc_folders = acc_folders ++ folders
+
+        # If there's a next_marker, fetch the next page
+        if next_marker && next_marker != "" do
+          Logger.debug("Azure list_folder: fetching next page with marker=#{next_marker}")
+          list_folder_paginated(sas_url, normalized_folder, next_marker, new_acc_files, new_acc_folders)
+        else
+          {:ok, %{files: new_acc_files, folders: new_acc_folders}}
         end
 
-      {usec, resp} = :timer.tc(fn -> Req.get(list_url, receive_timeout: @default_timeout) end)
-      ms = usec / 1000
-
-      Logger.debug(
-        "Azure list_folder: folder=#{normalized_folder} url=#{list_url} elapsed_ms=#{ms}"
-      )
-
-      handle_response(resp, &parse_blob_list/1)
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -438,7 +464,8 @@ defmodule Azurino.Azure do
           {doc, _} = :xmerl_scan.string(String.to_charlist(xml_body))
           files = extract_blob_names(doc)
           folders = extract_blob_prefix_names(doc)
-          {:ok, %{files: files, folders: folders}}
+          next_marker = extract_next_marker(doc)
+          {:ok, %{files: files, folders: folders, next_marker: next_marker}}
         end)
 
       Logger.info("parse_blob_list elapsed_ms=#{usec / 1000}")
@@ -451,9 +478,42 @@ defmodule Azurino.Azure do
   end
 
   defp extract_blob_names(doc) do
-    :xmerl_xpath.string(~c"//Blob/Name/text()", doc)
-    |> Enum.map(fn {:xmlText, _, _, _, blob_name, _} ->
-      List.to_string(blob_name)
+    :xmerl_xpath.string(~c"//Blob", doc)
+    |> Enum.map(fn blob_node ->
+      name =
+        :xmerl_xpath.string(~c"./Name/text()", blob_node)
+        |> extract_text()
+
+      # Extract properties
+      creation_time =
+        :xmerl_xpath.string(~c"./Properties/Creation-Time/text()", blob_node)
+        |> extract_text()
+
+      last_modified =
+        :xmerl_xpath.string(~c"./Properties/Last-Modified/text()", blob_node)
+        |> extract_text()
+
+      etag =
+        :xmerl_xpath.string(~c"./Properties/Etag/text()", blob_node)
+        |> extract_text()
+
+      content_length =
+        :xmerl_xpath.string(~c"./Properties/Content-Length/text()", blob_node)
+        |> extract_text()
+        |> parse_integer()
+
+      content_type =
+        :xmerl_xpath.string(~c"./Properties/Content-Type/text()", blob_node)
+        |> extract_text()
+
+      %{
+        name: name,
+        creation_time: creation_time,
+        last_modified: last_modified,
+        etag: etag,
+        content_length: content_length,
+        content_type: content_type
+      }
     end)
   end
 
@@ -463,4 +523,19 @@ defmodule Azurino.Azure do
       List.to_string(prefix_name)
     end)
   end
+
+  defp extract_next_marker(doc) do
+    case :xmerl_xpath.string(~c"//NextMarker/text()", doc) do
+      [{:xmlText, _, _, _, marker, _}] -> List.to_string(marker)
+      [] -> nil
+      _ -> nil
+    end
+  end
+
+  defp extract_text([{:xmlText, _, _, _, text, _}]) when is_list(text) do
+    List.to_string(text)
+  end
+
+  defp extract_text([]), do: nil
+  defp extract_text(_), do: nil
 end
