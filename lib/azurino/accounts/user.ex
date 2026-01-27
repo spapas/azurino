@@ -33,7 +33,8 @@ defmodule Azurino.Accounts.User do
     changeset =
       changeset
       |> validate_required([:email])
-      |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
+      # Avoid :re.import/1 warnings on OTP 27 by steering clear of \s inside char classes
+      |> validate_format(:email, ~r/^[^\s@,;]+@[^\s@,;]+$/,
         message: "must have the @ sign and no spaces"
       )
       |> validate_length(:email, max: 160)
