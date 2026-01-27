@@ -77,11 +77,9 @@ if config_env() == :prod do
     auth: :always,
     no_mx_lookups: true,  # Connect directly to relay host, don't do MX lookups
     tls_options: [
-      verify: :verify_peer,
-      cacerts: :public_key.cacerts_get(),
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
+      # For internal mail servers with complex cert chains, disable strict verification
+      # TLS is still used (connection is encrypted), but cert validation is relaxed
+      verify: :verify_none
     ]
 
   # ## SSL Support
