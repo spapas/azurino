@@ -124,7 +124,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AZURE_API_BASE_URL = "http://127.0.0.1:4000/api/azure"
 AZURE_STORAGE_FOLDER = "uploads"  # Optional, default folder
-AZURE_STORAGE_BUCKET = 'test01'  # or your bucket name
+AZURE_STORAGE_BUCKET = 'test02'  # or your bucket name
 
 STORAGES = {
     "default": {

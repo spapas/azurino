@@ -27,7 +27,7 @@ class AzureBlobStorage(Storage):
     
     def __init__(self, base_url=None, bucket=None, folder=None, api_token=None):
         self.base_url = base_url or getattr(settings, 'AZURE_API_BASE_URL', 'http://127.0.0.1:4000/api/azure')
-        self.bucket = bucket or getattr(settings, 'AZURE_STORAGE_BUCKET', 'default')
+        self.bucket = bucket or getattr(settings, 'AZURE_STORAGE_BUCKET', 'test02')
         self.folder = folder or getattr(settings, 'AZURE_STORAGE_FOLDER', 'uploads')
         self.api_token = api_token or getattr(settings, 'AZURE_API_TOKEN', '123')
 
@@ -72,6 +72,30 @@ class AzureBlobStorage(Storage):
         except Exception:
             pass
         return url
+
+    def _extract_paths(self, entries):
+        """Normalize folder/file entries to a list of path strings.
+
+        The list endpoint may return either plain strings or objects with
+        path-like fields. This helper makes the downstream listdir logic
+        resilient to either shape.
+        """
+        paths = []
+        if not entries:
+            return paths
+
+        for item in entries:
+            if isinstance(item, str):
+                paths.append(item)
+                continue
+
+            if isinstance(item, dict):
+                for key in ("path", "name", "filename", "file", "blob_path"):
+                    value = item.get(key)
+                    if isinstance(value, str):
+                        paths.append(value)
+                        break
+        return paths
     
     def _save(self, name, content):
         """
@@ -377,14 +401,14 @@ class AzureBlobStorage(Storage):
 
             if response.status_code == 200:
                 data = response.json()
-                folders = data.get('folders', [])
-                files = data.get('files', [])
+                folders = self._extract_paths(data.get('folders', []))
+                files = self._extract_paths(data.get('files', []))
 
                 # Remove folder prefix from results to return relative paths
                 if folder_path:
                     prefix = folder_path.rstrip('/') + '/'
-                    folders = [f.replace(prefix, '').rstrip('/') for f in folders if f.startswith(prefix)]
-                    files = [f.replace(prefix, '') for f in files if f.startswith(prefix)]
+                    folders = [f.replace(prefix, '').rstrip('/') for f in folders if isinstance(f, str) and f.startswith(prefix)]
+                    files = [f.replace(prefix, '') for f in files if isinstance(f, str) and f.startswith(prefix)]
 
                 return (folders, files)
             return ([], [])
