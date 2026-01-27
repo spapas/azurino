@@ -3,8 +3,17 @@ defmodule AzurinoWeb.AzurePageController do
 
   def index(conn, %{"path" => path} = params) do
     bucket = Map.get(params, "bucket", conn.params["bucket"] || "default")
-    {:ok, %{files: files, folders: contents}} = Azurino.Azure.list_folder(path, bucket)
-    render(conn, :azure, %{files: files, folders: contents})
+
+    case Azurino.Azure.list_folder(path, bucket) do
+      {:ok, %{files: files, folders: contents}} ->
+        render(conn, :azure, %{files: files, folders: contents})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:bad_gateway)
+        |> put_view(html: AzurinoWeb.ErrorHTML)
+        |> render(:"502", %{reason: inspect(reason)})
+    end
   end
 
   def index(conn, _params) do
