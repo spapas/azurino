@@ -74,7 +74,14 @@ if config_env() == :prod do
     port: String.to_integer(System.get_env("SMTP_PORT") || "587"),
     ssl: (System.get_env("SMTP_SSL") || "false") == "true",
     tls: :if_available,
-    auth: :if_available
+    auth: :if_available,
+    tls_options: [
+      verify: :verify_peer,
+      cacerts: :public_key.cacerts_get(),
+      customize_hostname_check: [
+        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+      ]
+    ]
 
   # ## SSL Support
   #
