@@ -1,5 +1,6 @@
 defmodule Azurino.Accounts.UserNotifier do
   import Swoosh.Email
+  require Logger
 
   alias Azurino.Mailer
   alias Azurino.Accounts.User
@@ -13,8 +14,13 @@ defmodule Azurino.Accounts.UserNotifier do
       |> subject(subject)
       |> text_body(body)
 
-    with {:ok, _metadata} <- Mailer.deliver(email) do
-      {:ok, email}
+    case Mailer.deliver(email) do
+      {:ok, _metadata} ->
+        {:ok, email}
+
+      {:error, reason} ->
+        Logger.error("Mailer delivery failed", reason: inspect(reason))
+        {:error, reason}
     end
   end
 
