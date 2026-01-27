@@ -72,9 +72,9 @@ if config_env() == :prod do
     username: System.get_env("SMTP_USERNAME"),
     password: System.get_env("SMTP_PASSWORD"),
     port: String.to_integer(System.get_env("SMTP_PORT") || "587"),
-    ssl: (System.get_env("SMTP_SSL") || "false") == "true",
-    tls: :if_available,
-    auth: :if_available,
+    ssl: false,  # Port 587 uses STARTTLS, not implicit SSL
+    tls: :always,  # Require STARTTLS upgrade
+    auth: :always,
     tls_options: [
       verify: :verify_peer,
       cacerts: :public_key.cacerts_get(),
