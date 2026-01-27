@@ -19,7 +19,12 @@ defmodule Azurino.Accounts.UserNotifier do
         {:ok, email}
 
       {:error, reason} ->
-        Logger.error("Mailer delivery failed", reason: inspect(reason))
+        # Log full details to help diagnose SMTP/API issues in prod
+        Logger.error("Mailer delivery failed: #{inspect(reason)}",
+          to: recipient,
+          subject: subject
+        )
+
         {:error, reason}
     end
   end
