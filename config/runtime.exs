@@ -61,6 +61,21 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  # Configure mailer for production (avoid Local adapter in prod)
+  smtp_host =
+    System.get_env("SMTP_HOST") ||
+      raise "environment variable SMTP_HOST is missing. Set your SMTP relay host"
+
+  config :azurino, Azurino.Mailer,
+    adapter: Swoosh.Adapters.SMTP,
+    relay: smtp_host,
+    username: System.get_env("SMTP_USERNAME"),
+    password: System.get_env("SMTP_PASSWORD"),
+    port: String.to_integer(System.get_env("SMTP_PORT") || "587"),
+    ssl: (System.get_env("SMTP_SSL") || "false") == "true",
+    tls: :if_available,
+    auth: :if_available
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key
