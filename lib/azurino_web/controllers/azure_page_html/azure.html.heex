@@ -70,7 +70,7 @@
                 <.icon name="hero-arrow-down-on-square" class="text-gray-600 dark:text-gray-400 w-4 h-4" />
               </.link>
 
-              <.link href={~p"/azure/#{@conn.params["bucket"] || "default"}/download_signed/?#{Azurino.SignedURL.sign(path: file.name, metadata: %{"bucket" => (@conn.params["bucket"] || "default")})}"} title="Download (signed)">
+              <.link href={~p"/api/azure/#{@conn.params["bucket"] || "default"}/download-signed?#{Azurino.SignedURL.sign(path: file.name)}"} title="Download (signed)">
                 <.icon name="hero-key" class="text-gray-600 dark:text-gray-400 w-4 h-4" />
               </.link>
 
