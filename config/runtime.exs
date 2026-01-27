@@ -75,6 +75,7 @@ if config_env() == :prod do
     ssl: false,  # Port 587 uses STARTTLS, not implicit SSL
     tls: :always,  # Require STARTTLS upgrade
     auth: :always,
+    no_mx_lookups: true,  # Connect directly to relay host, don't do MX lookups
     tls_options: [
       verify: :verify_peer,
       cacerts: :public_key.cacerts_get(),
