@@ -137,7 +137,7 @@ For documentation-only changes, full test execution is usually unnecessary unles
 
 ## Current rough edges worth noticing
 
-- The repository contains both framework-level guidance in `AGENTS.md` and now this repository-oriented `agents.md`
+- The repository contains both framework-level guidance in `AGENTS.md` and this repository-oriented `REPO_AGENTS.md`
 - The browser file manager template currently contains a fair amount of inline JavaScript and inline styling
 - The README is still minimal and does not fully document architecture or operational decisions
 
